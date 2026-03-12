@@ -1,0 +1,44 @@
+larainspect audit
+Host: demo-vps
+Schema: v0alpha1
+Generated: 2024-05-16 12:00:00Z
+Duration: 1.25s
+
+Summary: critical=1 high=1 medium=1 low=0 informational=0 unknowns=1
+
+Direct Findings
+---------------
+[CRITICAL][CONFIRMED] .env is writable by the web runtime (filesystem.writable_env)
+Why: A writable .env lets the runtime or an attacker change secrets and application behavior.
+Affected: /var/www/shop/.env
+Evidence:
+- path: /var/www/shop/.env
+- mode: 0664
+Remediation: Set .env ownership to the deploy user and remove runtime write access.
+
+
+Heuristic Findings
+------------------
+[MEDIUM][POSSIBLE] APP_DEBUG appears to be enabled (laravel.debug_mode)
+Why: Verbose exception output can expose stack traces, paths, and secrets.
+Affected: /var/www/shop/.env
+Evidence:
+- env: APP_DEBUG=true
+Remediation: Verify production environment variables and cached config values.
+
+
+Possible Compromise Indicators
+------------------------------
+[HIGH][PROBABLE] Unexpected PHP file in public uploads path (forensics.unexpected_php_file)
+Why: Executable PHP in an upload path can indicate a dropped webshell or an unsafe execution boundary.
+Affected: /var/www/shop/public/uploads/cache.php
+Evidence:
+- path: /var/www/shop/public/uploads/cache.php
+Remediation: Remove executable handling from upload paths and investigate file provenance.
+
+
+Unknowns
+--------
+[PERMISSION_DENIED] Could not inspect the main Nginx config (nginx.main_config)
+Reason: Permission denied while reading /etc/nginx/nginx.conf.
+Affected: /etc/nginx/nginx.conf

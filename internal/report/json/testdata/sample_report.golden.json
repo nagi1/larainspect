@@ -1,0 +1,113 @@
+{
+  "schema_version": "v0alpha1",
+  "generated_at": "2024-05-16T12:00:00Z",
+  "duration": "1.25s",
+  "host": {
+    "hostname": "demo-vps",
+    "os": "linux",
+    "arch": "amd64"
+  },
+  "summary": {
+    "total_findings": 3,
+    "direct_findings": 1,
+    "heuristic_findings": 1,
+    "compromise_indicators": 1,
+    "unknowns": 1,
+    "severity_counts": {
+      "critical": 1,
+      "high": 1,
+      "medium": 1
+    }
+  },
+  "direct_findings": [
+    {
+      "id": "filesystem.writable_env",
+      "check_id": "filesystem.writable_env",
+      "class": "direct_finding",
+      "severity": "critical",
+      "confidence": "confirmed",
+      "title": ".env is writable by the web runtime",
+      "why": "A writable .env lets the runtime or an attacker change secrets and application behavior.",
+      "remediation": "Set .env ownership to the deploy user and remove runtime write access.",
+      "evidence": [
+        {
+          "label": "path",
+          "detail": "/var/www/shop/.env"
+        },
+        {
+          "label": "mode",
+          "detail": "0664"
+        }
+      ],
+      "affected": [
+        {
+          "type": "path",
+          "path": "/var/www/shop/.env"
+        }
+      ]
+    }
+  ],
+  "heuristic_findings": [
+    {
+      "id": "laravel.debug_mode",
+      "check_id": "laravel.debug_mode",
+      "class": "heuristic_finding",
+      "severity": "medium",
+      "confidence": "possible",
+      "title": "APP_DEBUG appears to be enabled",
+      "why": "Verbose exception output can expose stack traces, paths, and secrets.",
+      "remediation": "Verify production environment variables and cached config values.",
+      "evidence": [
+        {
+          "label": "env",
+          "detail": "APP_DEBUG=true"
+        }
+      ],
+      "affected": [
+        {
+          "type": "path",
+          "path": "/var/www/shop/.env"
+        }
+      ]
+    }
+  ],
+  "compromise_indicators": [
+    {
+      "id": "forensics.unexpected_php_file",
+      "check_id": "forensics.unexpected_php_file",
+      "class": "possible_compromise_indicator",
+      "severity": "high",
+      "confidence": "probable",
+      "title": "Unexpected PHP file in public uploads path",
+      "why": "Executable PHP in an upload path can indicate a dropped webshell or an unsafe execution boundary.",
+      "remediation": "Remove executable handling from upload paths and investigate file provenance.",
+      "evidence": [
+        {
+          "label": "path",
+          "detail": "/var/www/shop/public/uploads/cache.php"
+        }
+      ],
+      "affected": [
+        {
+          "type": "path",
+          "path": "/var/www/shop/public/uploads/cache.php"
+        }
+      ]
+    }
+  ],
+  "unknowns": [
+    {
+      "id": "nginx.main_config",
+      "check_id": "nginx.main_config",
+      "title": "Could not inspect the main Nginx config",
+      "reason": "Permission denied while reading /etc/nginx/nginx.conf.",
+      "error_kind": "permission_denied",
+      "affected": [
+        {
+          "type": "path",
+          "path": "/etc/nginx/nginx.conf"
+        }
+      ]
+    }
+  ]
+}
