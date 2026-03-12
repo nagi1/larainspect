@@ -82,22 +82,22 @@ CLI -> preflight -> snapshot discovery -> checks -> correlators -> terminal/json
 Detailed stages:
 
 1. `preflight`
-    - validate flags
-    - collect host identity
-    - detect available commands
-    - establish scan roots and time budgets
+   - validate flags
+   - collect host identity
+   - detect available commands
+   - establish scan roots and time budgets
 2. `discovery`
-    - discover Laravel apps and shared runtime surfaces
-    - parse service configs and process state into normalized models
-    - collect bounded filesystem metadata and log excerpts
+   - discover Laravel apps and shared runtime surfaces
+   - parse service configs and process state into normalized models
+   - collect bounded filesystem metadata and log excerpts
 3. `direct checks`
-    - run evidence-backed checks per subsystem
+   - run evidence-backed checks per subsystem
 4. `correlation`
-    - combine writable, served, executable, runtime, and listener signals into higher-risk findings
+   - combine writable, served, executable, runtime, and listener signals into higher-risk findings
 5. `report`
-    - render terminal and JSON output from the same normalized findings
+   - render terminal and JSON output from the same normalized findings
 6. `exit`
-    - map results to stable exit codes
+   - map results to stable exit codes
 
 ## Package Layout
 
@@ -191,26 +191,26 @@ Likely poor candidates for aggressive concurrency:
 The implementation should be validated at several layers:
 
 1. `unit tests`
-    - parser behavior
-    - helper predicates
-    - severity and confidence mapping
-    - remediation and evidence formatting helpers
+   - parser behavior
+   - helper predicates
+   - severity and confidence mapping
+   - remediation and evidence formatting helpers
 2. `fixture-driven subsystem tests`
-    - Nginx parsing
-    - PHP-FPM parsing
-    - Composer metadata parsing
-    - cron and systemd parsing
-    - filesystem classification logic
+   - Nginx parsing
+   - PHP-FPM parsing
+   - Composer metadata parsing
+   - cron and systemd parsing
+   - filesystem classification logic
 3. `check tests`
-    - positive and negative cases for each direct finding
-    - heuristic checks validated against representative source patterns
-    - correlation checks validated against multi-signal snapshots
+   - positive and negative cases for each direct finding
+   - heuristic checks validated against representative source patterns
+   - correlation checks validated against multi-signal snapshots
 4. `report tests`
-    - terminal golden output
-    - JSON schema stability
-    - exit code mapping
+   - terminal golden output
+   - JSON schema stability
+   - exit code mapping
 5. `integration-style audit tests`
-    - end-to-end audit runs against deterministic snapshots or fixtures without requiring a live VPS
+   - end-to-end audit runs against deterministic snapshots or fixtures without requiring a live VPS
 
 Testing rules:
 
@@ -761,7 +761,6 @@ Exact evidence and commands:
 - `nft list ruleset`
 - `iptables -S`
 
-
 Representative checks:
 
 - Redis, MySQL, or Postgres listening on public interfaces
@@ -801,7 +800,6 @@ Exact evidence and commands:
 - `stat`, `readlink -f`, `namei -l`, and `find` across release/current/shared layout
 - direct reads of deploy scripts, unit files, and shell history artifacts only when explicitly accessible and safe to inspect
 - parse `composer.lock`, Composer install artifacts, and presence of `vendor/composer/installed.json`
-
 
 Representative checks:
 
@@ -886,7 +884,6 @@ Exact evidence and commands:
 - correlate previously collected app, pool, socket, listener, and permission records
 - compare `.env` ownership, readability, and credential patterns only at a metadata level unless direct reads are already in-bounds for each discovered app
 
-
 Representative checks:
 
 - app A can read app B `.env`
@@ -942,73 +939,70 @@ Summary fields:
 
 ```json
 {
-    "schema_version": "1.0.0",
-    "hostname": "web-01",
-    "timestamp": "2026-03-12T12:00:00Z",
-    "app_path": "/var/www/example/current",
-    "detected_stack": {
-        "laravel": {"present": true, "version": "11.9.0"},
-        "filament": {"present": true, "version": "3.2.95"},
-        "livewire": {"present": true, "version": "3.5.0"},
-        "horizon": {"present": false},
-        "octane": {"present": false},
-        "nginx": {"present": true},
-        "php_fpm": {"present": true},
-        "redis": {"present": true},
-        "mysql": {"present": false},
-        "postgres": {"present": false}
-    },
-    "summary": {
-        "critical": 1,
-        "high": 3,
-        "medium": 4,
-        "low": 2,
-        "informational": 6,
-        "unknown": 5,
-        "compromise_indicators": 2,
-        "exit_code": 2
-    },
-    "findings": [
-        {
-            "id": "fs.runtime_writable_code",
-            "class": "direct",
-            "subsystem": "filesystem",
-            "title": "Runtime user can write application code",
-            "severity": "Critical",
-            "confidence": "confirmed",
-            "why_it_matters": "A compromised web runtime can persist code execution by modifying application files.",
-            "evidence": [
-                "path /var/www/app/current/routes/web.php owned by deploy:www-data mode 664",
-                "php-fpm pool user is www-data"
-            ],
-            "affected": [
-                {"type": "path", "value": "/var/www/app/current/routes/web.php"},
-                {"type": "process", "value": "php-fpm:www-data"}
-            ],
-            "remediation": "Make code paths owned by the deploy user and non-writable to the PHP runtime. Limit runtime write access to storage/ and bootstrap/cache/.",
-            "remediation_priority": "immediate",
-            "commands": [
-                {"argv": ["stat", "-c", "%U %G %a %n", "/var/www/app/current/routes/web.php"], "status": 0},
-                {"argv": ["ps", "-eo", "user,group,pid,ppid,comm,args"], "status": 0}
-            ],
-            "heuristic_details": null
-        }
-    ],
-    "unknowns": [
-        {
-            "subsystem": "nginx",
-            "target": "/etc/nginx/sites-enabled/app.conf",
-            "reason": "permission_denied"
-        }
-    ],
-    "command_runs": [
-        {
-            "argv": ["nginx", "-T"],
-            "status": 1,
-            "stderr_excerpt": "permission denied",
-            "truncated": false
-        }
-    ]
+	"schema_version": "1.0.0",
+	"hostname": "web-01",
+	"timestamp": "2026-03-12T12:00:00Z",
+	"app_path": "/var/www/example/current",
+	"detected_stack": {
+		"laravel": { "present": true, "version": "11.9.0" },
+		"filament": { "present": true, "version": "3.2.95" },
+		"livewire": { "present": true, "version": "3.5.0" },
+		"horizon": { "present": false },
+		"octane": { "present": false },
+		"nginx": { "present": true },
+		"php_fpm": { "present": true },
+		"redis": { "present": true },
+		"mysql": { "present": false },
+		"postgres": { "present": false }
+	},
+	"summary": {
+		"critical": 1,
+		"high": 3,
+		"medium": 4,
+		"low": 2,
+		"informational": 6,
+		"unknown": 5,
+		"compromise_indicators": 2,
+		"exit_code": 2
+	},
+	"findings": [
+		{
+			"id": "fs.runtime_writable_code",
+			"class": "direct",
+			"subsystem": "filesystem",
+			"title": "Runtime user can write application code",
+			"severity": "Critical",
+			"confidence": "confirmed",
+			"why_it_matters": "A compromised web runtime can persist code execution by modifying application files.",
+			"evidence": ["path /var/www/app/current/routes/web.php owned by deploy:www-data mode 664", "php-fpm pool user is www-data"],
+			"affected": [
+				{ "type": "path", "value": "/var/www/app/current/routes/web.php" },
+				{ "type": "process", "value": "php-fpm:www-data" }
+			],
+			"remediation": "Make code paths owned by the deploy user and non-writable to the PHP runtime. Limit runtime write access to storage/ and bootstrap/cache/.",
+			"remediation_priority": "immediate",
+			"commands": [
+				{ "argv": ["stat", "-c", "%U %G %a %n", "/var/www/app/current/routes/web.php"], "status": 0 },
+				{ "argv": ["ps", "-eo", "user,group,pid,ppid,comm,args"], "status": 0 }
+			],
+			"heuristic_details": null
+		}
+	],
+	"unknowns": [
+		{
+			"subsystem": "nginx",
+			"target": "/etc/nginx/sites-enabled/app.conf",
+			"reason": "permission_denied"
+		}
+	],
+	"command_runs": [
+		{
+			"argv": ["nginx", "-T"],
+			"status": 1,
+			"stderr_excerpt": "permission denied",
+			"truncated": false
+		}
+	]
 }
 ```
 
