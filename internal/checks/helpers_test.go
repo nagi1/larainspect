@@ -51,6 +51,31 @@ func TestHelperFunctionsCoverEdgeCases(t *testing.T) {
 	if len(evidence) != 3 {
 		t.Fatalf("expected pathEvidence() to include resolved path evidence, got %+v", evidence)
 	}
+
+	sourceEvidence := sourceMatchEvidence(model.LaravelApp{RootPath: "/var/www/shop"}, model.SourceMatch{
+		RelativePath: "routes/web.php",
+		Line:         12,
+		Detail:       "defines an admin-like route path or prefix",
+	})
+	if len(sourceEvidence) != 3 {
+		t.Fatalf("expected sourceMatchEvidence() to include path, line, and detail, got %+v", sourceEvidence)
+	}
+
+	app.Packages = []model.PackageRecord{{Name: "livewire/livewire"}}
+	if !appUsesPackage(app, "livewire/livewire") {
+		t.Fatal("expected appUsesPackage() to detect package metadata")
+	}
+	if _, found := packageRecordForApp(app, "filament/filament"); found {
+		t.Fatal("expected packageRecordForApp() to report missing package")
+	}
+
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "livewire.component.detected"},
+		{RuleID: "filament.file.detected"},
+	}
+	if len(sourceMatchesWithPrefix(app, "livewire.")) != 1 {
+		t.Fatalf("expected sourceMatchesWithPrefix() to match one livewire signal, got %+v", app.SourceMatches)
+	}
 }
 
 func TestFilesystemPermissionsCheckReportsSymlinkedEnvironmentFile(t *testing.T) {

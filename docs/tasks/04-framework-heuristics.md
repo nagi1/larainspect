@@ -21,6 +21,22 @@ Implement Laravel, Livewire, and Filament heuristics with clear lower-confidence
 - fixture coverage for representative Livewire and Filament patterns
 - contributor guide examples for adding a new heuristic safely
 
+## Contributor Pattern
+
+When adding a new heuristic in this phase:
+
+- extend bounded discovery source signals first; do not let checks read files directly
+- prefer one explicit rule ID per inferred signal so evidence phrasing stays stable across terminal and JSON output
+- only emit a heuristic finding when the snapshot contains a concrete positive signal; represent missing counter-signals in the evidence wording instead of inventing certainty
+- keep helper names descriptive enough that contributors can tell framework-specific inference from direct checks immediately
+- add at least one positive and one negative test so the heuristic does not become noisy by default
+
+Example shape:
+
+1. discovery adds a bounded source match such as `filament.panel.auth_middleware`
+2. the check combines that positive signal with the absence of another signal and emits a `heuristic_finding`
+3. the finding evidence says `no obvious ... signal was found in the scanned ... files` instead of claiming the control is definitely missing
+
 ## Blockers To Watch
 
 - Treating static code smells as confirmed vulnerabilities

@@ -336,7 +336,8 @@ func TestSnapshotServiceSupportsInstalledPackagesArrayFormat(t *testing.T) {
 	appRoot := createLaravelTestApp(t, t.TempDir(), true)
 	writeTestFile(t, filepath.Join(appRoot, "vendor/composer/installed.json"), `[
   {"name": "laravel/framework", "version": "v11.10.0"},
-  {"name": "laravel/horizon", "version": "v5.0.0"}
+  {"name": "laravel/horizon", "version": "v5.0.0"},
+  {"name": "laravel/telescope", "version": "v6.0.0"}
 ]`)
 
 	service := newTestSnapshotService()
@@ -364,6 +365,10 @@ func TestSnapshotServiceSupportsInstalledPackagesArrayFormat(t *testing.T) {
 
 	if got := packageVersion(snapshot.Apps[0].Packages, "laravel/horizon"); got != "v5.0.0" {
 		t.Fatalf("expected horizon package, got %q", got)
+	}
+
+	if got := packageVersion(snapshot.Apps[0].Packages, "laravel/telescope"); got != "v6.0.0" {
+		t.Fatalf("expected telescope package, got %q", got)
 	}
 }
 
@@ -418,6 +423,110 @@ func TestSnapshotServiceCollectsAppMetadataForCoreChecks(t *testing.T) {
 
 	if len(app.Artifacts) < 3 {
 		t.Fatalf("expected artifact metadata, got %+v", app.Artifacts)
+	}
+}
+
+func TestSnapshotServiceCollectsFrameworkSourceMatchesAndAdminToolArtifacts(t *testing.T) {
+	t.Parallel()
+
+	appRoot := createLaravelTestApp(t, t.TempDir(), true)
+	writeTestFile(t, filepath.Join(appRoot, "routes/web.php"), `<?php
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('admin')->group(function () {
+    Route::get('/dashboard', DashboardController::class);
+    Route::post('/login', LoginController::class);
+});
+`)
+	writeTestFile(t, filepath.Join(appRoot, "bootstrap/app.php"), `<?php
+return Application::configure(basePath: dirname(__DIR__))
+    ->withMiddleware(function ($middleware) {
+        $middleware->trustProxies(at: '*');
+        $middleware->validateCsrfTokens(except: ['*']);
+    });
+`)
+	writeTestFile(t, filepath.Join(appRoot, "config/livewire.php"), `<?php
+return [
+    'temporary_file_upload' => [
+        'disk' => 'public',
+        'directory' => 'livewire-tmp',
+    ],
+];
+`)
+	if err := os.MkdirAll(filepath.Join(appRoot, "app/Livewire"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(app/Livewire) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(appRoot, "app/Livewire/EditTenant.php"), `<?php
+namespace App\Livewire;
+
+use Livewire\Component;
+use Livewire\WithFileUploads;
+
+class EditTenant extends Component
+{
+    use WithFileUploads;
+
+    public $tenant_id;
+
+    public function save(): void
+    {
+        $tenant->save();
+    }
+}
+`)
+	if err := os.MkdirAll(filepath.Join(appRoot, "app/Providers/Filament"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(app/Providers/Filament) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(appRoot, "app/Providers/Filament/AdminPanelProvider.php"), `<?php
+namespace App\Providers\Filament;
+
+use Filament\Panel;
+
+class AdminPanelProvider
+{
+    public function panel(Panel $panel): Panel
+    {
+        return $panel->path('admin');
+    }
+}
+`)
+	writeTestFile(t, filepath.Join(appRoot, "public/adminer.php"), "<?php echo 'adminer';\n")
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) {
+		return "", errors.New("missing")
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: appRoot,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	app := snapshot.Apps[0]
+	for _, ruleID := range []string{
+		"laravel.route.admin_path",
+		"laravel.csrf.except_all",
+		"laravel.trusted_proxies.wildcard",
+		"livewire.component.with_file_uploads",
+		"livewire.component.public_sensitive_property",
+		"filament.panel.path.admin",
+	} {
+		if !sourceMatchExists(app.SourceMatches, ruleID) {
+			t.Fatalf("expected source match %q, got %+v", ruleID, app.SourceMatches)
+		}
+	}
+
+	if !artifactKindExists(app.Artifacts, model.ArtifactKindPublicAdminTool) {
+		t.Fatalf("expected public admin tool artifact, got %+v", app.Artifacts)
 	}
 }
 
@@ -563,4 +672,24 @@ func packageVersion(packages []model.PackageRecord, name string) string {
 	}
 
 	return ""
+}
+
+func sourceMatchExists(matches []model.SourceMatch, ruleID string) bool {
+	for _, match := range matches {
+		if match.RuleID == ruleID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func artifactKindExists(artifacts []model.ArtifactRecord, artifactKind model.ArtifactKind) bool {
+	for _, artifact := range artifacts {
+		if artifact.Kind == artifactKind {
+			return true
+		}
+	}
+
+	return false
 }

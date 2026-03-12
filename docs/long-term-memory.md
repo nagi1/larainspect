@@ -44,9 +44,12 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Discovery tests must isolate host-specific Nginx and PHP-FPM search patterns so OSS CI stays deterministic and does not inherit the local machine's service config state
 - Temporary-path fixtures should resolve symlinks before asserting ambiguous-root behavior, because macOS temp directories may route through `/private` and create false-positive path-indirection findings
 - Task-3 checks should only mark findings as `confirmed` when the normalized snapshot contains direct path or config evidence; if config visibility is partial or depends on runtime cache state, prefer `probable`
+- Task-3 checklist coverage must stay tied to direct snapshot evidence for Laravel and PHP boundaries: `.env` exposure, public secret artifacts, Nginx docroot and PHP execution scope, deny rules, upload execution, and PHP-FPM root/TCP/socket/shared-pool risks should remain explicit confirmed checks
 - Host and distro layout assumptions must stay configurable: discovery should read a small profile file for non-standard Nginx, PHP-FPM, Supervisor, systemd, and app-root paths instead of baking Ubuntu-style paths into checks or CLI flow
 - Operator config files must fail fast on unknown keys and unsupported distro identifiers; silent acceptance of typos is not acceptable for a security-focused CLI
 - Prefer operator-facing config names like `server`, `laravel`, and `services` over internal model terms; default examples should feel familiar to Laravel-on-Ubuntu users and only expose advanced knobs when needed
+- Framework heuristics must only emit risky package exposure findings for packages discovery actually records in Composer metadata, and `composer.json`-only declarations must stay lower-confidence than `composer.lock` or installed-package evidence
+- Repository test coverage should stay at or above 90% overall, with new heuristic and discovery code carrying positive and negative tests instead of relying on aggregate package coverage to hide gaps
 
 ## Architecture Direction
 

@@ -12,14 +12,15 @@ type PackageRecord struct {
 }
 
 type LaravelApp struct {
-	RootPath     string           `json:"root_path"`
-	ResolvedPath string           `json:"resolved_path,omitempty"`
-	AppName      string           `json:"app_name,omitempty"`
-	MarkerFiles  []string         `json:"marker_files"`
-	Packages     []PackageRecord  `json:"packages,omitempty"`
-	KeyPaths     []PathRecord     `json:"key_paths,omitempty"`
-	Environment  EnvironmentInfo  `json:"environment,omitempty"`
-	Artifacts    []ArtifactRecord `json:"artifacts,omitempty"`
+	RootPath      string           `json:"root_path"`
+	ResolvedPath  string           `json:"resolved_path,omitempty"`
+	AppName       string           `json:"app_name,omitempty"`
+	MarkerFiles   []string         `json:"marker_files"`
+	Packages      []PackageRecord  `json:"packages,omitempty"`
+	KeyPaths      []PathRecord     `json:"key_paths,omitempty"`
+	Environment   EnvironmentInfo  `json:"environment,omitempty"`
+	Artifacts     []ArtifactRecord `json:"artifacts,omitempty"`
+	SourceMatches []SourceMatch    `json:"source_matches,omitempty"`
 }
 
 func SortPackageRecords(records []PackageRecord) {
@@ -109,6 +110,7 @@ const (
 	ArtifactKindEnvironmentBackup   ArtifactKind = "environment_backup"
 	ArtifactKindPublicSensitiveFile ArtifactKind = "public_sensitive_file"
 	ArtifactKindPublicPHPFile       ArtifactKind = "public_php_file"
+	ArtifactKindPublicAdminTool     ArtifactKind = "public_admin_tool"
 	ArtifactKindVersionControlPath  ArtifactKind = "version_control_path"
 )
 
@@ -117,6 +119,13 @@ type ArtifactRecord struct {
 	Path             PathRecord   `json:"path"`
 	WithinPublicPath bool         `json:"within_public_path,omitempty"`
 	UploadLikePath   bool         `json:"upload_like_path,omitempty"`
+}
+
+type SourceMatch struct {
+	RuleID       string `json:"rule_id"`
+	RelativePath string `json:"relative_path"`
+	Line         int    `json:"line,omitempty"`
+	Detail       string `json:"detail,omitempty"`
 }
 
 type NginxSite struct {
@@ -180,6 +189,22 @@ func SortPathRecords(records []PathRecord) {
 func SortArtifactRecords(records []ArtifactRecord) {
 	sort.Slice(records, func(leftIndex int, rightIndex int) bool {
 		return records[leftIndex].Path.RelativePath < records[rightIndex].Path.RelativePath
+	})
+}
+
+func SortSourceMatches(matches []SourceMatch) {
+	sort.Slice(matches, func(leftIndex int, rightIndex int) bool {
+		leftMatch := matches[leftIndex]
+		rightMatch := matches[rightIndex]
+
+		switch {
+		case leftMatch.RelativePath != rightMatch.RelativePath:
+			return leftMatch.RelativePath < rightMatch.RelativePath
+		case leftMatch.Line != rightMatch.Line:
+			return leftMatch.Line < rightMatch.Line
+		default:
+			return leftMatch.RuleID < rightMatch.RuleID
+		}
 	})
 }
 

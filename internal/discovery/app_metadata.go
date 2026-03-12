@@ -21,16 +21,18 @@ func expectedLaravelPathList() []string {
 	return relativePaths
 }
 
-func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string) ([]model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.Unknown) {
+func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string) ([]model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.SourceMatch, []model.Unknown) {
 	keyPaths, pathUnknowns := service.collectKeyPathRecords(rootPath)
 	environment, environmentUnknowns := service.collectEnvironmentInfo(rootPath)
 	artifacts, artifactUnknowns := service.collectArtifactRecords(ctx, rootPath)
+	sourceMatches, sourceUnknowns := service.collectFrameworkSourceMatches(ctx, rootPath)
 
 	unknowns := append([]model.Unknown{}, pathUnknowns...)
 	unknowns = append(unknowns, environmentUnknowns...)
 	unknowns = append(unknowns, artifactUnknowns...)
+	unknowns = append(unknowns, sourceUnknowns...)
 
-	return keyPaths, environment, artifacts, unknowns
+	return keyPaths, environment, artifacts, sourceMatches, unknowns
 }
 
 func (service SnapshotService) collectKeyPathRecords(rootPath string) ([]model.PathRecord, []model.Unknown) {
@@ -212,6 +214,8 @@ func classifyArtifactPath(relativePath string, directoryEntry fs.DirEntry) (mode
 		return model.ArtifactKindEnvironmentBackup, withinPublicPath, uploadLikePath, true
 	case baseName == ".git" || baseName == ".svn":
 		return model.ArtifactKindVersionControlPath, withinPublicPath, uploadLikePath, true
+	case withinPublicPath && matchesPublicAdminToolPath(cleanRelativePath, directoryEntry):
+		return model.ArtifactKindPublicAdminTool, true, uploadLikePath, true
 	case !directoryEntry.IsDir() && withinPublicPath && hasSensitivePublicFileExtension(baseName):
 		return model.ArtifactKindPublicSensitiveFile, true, uploadLikePath, true
 	case !directoryEntry.IsDir() && withinPublicPath && uploadLikePath && strings.EqualFold(filepath.Ext(baseName), ".php"):
@@ -253,6 +257,22 @@ func hasSensitivePublicFileExtension(baseName string) bool {
 	}
 
 	return false
+}
+
+func matchesPublicAdminToolPath(relativePath string, directoryEntry fs.DirEntry) bool {
+	baseName := strings.ToLower(filepath.Base(relativePath))
+
+	if !directoryEntry.IsDir() {
+		if strings.HasPrefix(baseName, "adminer") && strings.HasSuffix(baseName, ".php") {
+			return true
+		}
+
+		if strings.HasPrefix(baseName, "phpinfo") && strings.HasSuffix(baseName, ".php") {
+			return true
+		}
+	}
+
+	return baseName == "phpmyadmin"
 }
 
 func (service SnapshotService) inspectPathRecord(rootPath string, relativePath string) (model.PathRecord, *model.Unknown) {

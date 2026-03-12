@@ -42,6 +42,29 @@ func pathEvidence(pathRecord model.PathRecord) []model.Evidence {
 	return evidence
 }
 
+func sourceMatchEvidence(app model.LaravelApp, sourceMatch model.SourceMatch) []model.Evidence {
+	evidence := []model.Evidence{
+		{Label: "source", Detail: filepath.Join(app.RootPath, sourceMatch.RelativePath)},
+	}
+
+	if sourceMatch.Line > 0 {
+		evidence = append(evidence, model.Evidence{Label: "line", Detail: strconv.Itoa(sourceMatch.Line)})
+	}
+
+	if strings.TrimSpace(sourceMatch.Detail) != "" {
+		evidence = append(evidence, model.Evidence{Label: "match", Detail: sourceMatch.Detail})
+	}
+
+	return evidence
+}
+
+func sourceMatchTarget(app model.LaravelApp, sourceMatch model.SourceMatch) model.Target {
+	return model.Target{
+		Type: "path",
+		Path: filepath.Join(app.RootPath, sourceMatch.RelativePath),
+	}
+}
+
 func boolFromEnvironmentValue(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on":
@@ -88,6 +111,43 @@ func appUsesPublicRoot(app model.LaravelApp, servedRoot string) bool {
 	}
 
 	return false
+}
+
+func appUsesPackage(app model.LaravelApp, packageName string) bool {
+	_, found := packageRecordForApp(app, packageName)
+	return found
+}
+
+func packageRecordForApp(app model.LaravelApp, packageName string) (model.PackageRecord, bool) {
+	for _, packageRecord := range app.Packages {
+		if packageRecord.Name == packageName {
+			return packageRecord, true
+		}
+	}
+
+	return model.PackageRecord{}, false
+}
+
+func sourceMatchesForRule(app model.LaravelApp, ruleID string) []model.SourceMatch {
+	matches := []model.SourceMatch{}
+	for _, sourceMatch := range app.SourceMatches {
+		if sourceMatch.RuleID == ruleID {
+			matches = append(matches, sourceMatch)
+		}
+	}
+
+	return matches
+}
+
+func sourceMatchesWithPrefix(app model.LaravelApp, rulePrefix string) []model.SourceMatch {
+	matches := []model.SourceMatch{}
+	for _, sourceMatch := range app.SourceMatches {
+		if strings.HasPrefix(sourceMatch.RuleID, rulePrefix) {
+			matches = append(matches, sourceMatch)
+		}
+	}
+
+	return matches
 }
 
 func parseOctalMode(value string) (uint32, bool) {

@@ -97,6 +97,16 @@ func TestCoreLaravelPathExpectationsAndSortHelpers(t *testing.T) {
 		t.Fatalf("SortArtifactRecords() did not sort as expected: %+v", artifactRecords)
 	}
 
+	sourceMatches := []model.SourceMatch{
+		{RelativePath: "routes/web.php", Line: 12, RuleID: "z"},
+		{RelativePath: "app/Livewire/EditUser.php", Line: 4, RuleID: "a"},
+		{RelativePath: "routes/web.php", Line: 8, RuleID: "b"},
+	}
+	model.SortSourceMatches(sourceMatches)
+	if sourceMatches[0].RelativePath != "app/Livewire/EditUser.php" || sourceMatches[1].Line != 8 {
+		t.Fatalf("SortSourceMatches() did not sort as expected: %+v", sourceMatches)
+	}
+
 	nginxSites := []model.NginxSite{
 		{ConfigPath: "b.conf", Root: "/b"},
 		{ConfigPath: "a.conf", Root: "/a"},
