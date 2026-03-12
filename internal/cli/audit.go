@@ -26,7 +26,7 @@ func runAuditCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, ar
 
 	if err := flagSet.Parse(args); err != nil {
 		writeFlagError(stderr, err, printAuditHelp)
-		return 1
+		return int(model.ExitCodeUsageError)
 	}
 
 	reporter, err := reporterFor(*format)
@@ -34,7 +34,7 @@ func runAuditCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, ar
 		fmt.Fprintln(stderr, err)
 		fmt.Fprintln(stderr)
 		printAuditHelp(stderr)
-		return 1
+		return int(model.ExitCodeUsageError)
 	}
 
 	commandRunner := runner.NewCommandRunner(*commandTimeout, *maxOutputBytes, runner.DefaultAllowlist())
@@ -46,7 +46,7 @@ func runAuditCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, ar
 	}, commandRunner)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return 1
+		return int(model.ExitCodeAuditFailed)
 	}
 
 	auditor := runner.Auditor{
@@ -58,15 +58,15 @@ func runAuditCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, ar
 	auditReport, err := auditor.Run(ctx, execution)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return 1
+		return int(model.ExitCodeAuditFailed)
 	}
 
 	if err := reporter.Render(stdout, auditReport); err != nil {
 		fmt.Fprintln(stderr, err)
-		return 1
+		return int(model.ExitCodeAuditFailed)
 	}
 
-	return 0
+	return int(model.ExitCodeForReport(auditReport))
 }
 
 func reporterFor(format string) (report.Reporter, error) {
@@ -98,4 +98,13 @@ Flags:
   --command-timeout duration Timeout for one allowlisted command (default 2s)
   --max-output-bytes int     Maximum bytes captured per command stream (default 65536)
   --worker-limit int         Reserved worker cap for bounded concurrency
+
+Exit codes:
+  0   clean audit with no findings or unknowns
+  2   usage or flag error
+  10  low or informational risk, or unknown-only audit result
+  20  medium-risk finding present
+  30  high-risk finding present
+  40  critical-risk finding present
+  50  audit execution failure
 `

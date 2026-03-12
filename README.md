@@ -26,6 +26,16 @@ go run ./cmd/larainspect audit
 go run ./cmd/larainspect audit --format json
 ```
 
+## Exit codes
+
+- `0`: clean audit with no findings or unknowns
+- `2`: usage or flag error
+- `10`: low or informational risk, or unknown-only result
+- `20`: medium-risk finding present
+- `30`: high-risk finding present
+- `40`: critical-risk finding present
+- `50`: audit execution failure
+
 ## Repository guide
 
 - [Project docs](/Users/nagi/code/larainspect/docs/README.md)

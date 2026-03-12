@@ -76,6 +76,15 @@ const (
 	ErrorKindNotEnoughData    ErrorKind = "not_enough_data"
 )
 
+func (kind ErrorKind) Valid() bool {
+	switch kind {
+	case ErrorKindPermissionDenied, ErrorKindCommandRejected, ErrorKindCommandFailed, ErrorKindCommandTimeout, ErrorKindCommandMissing, ErrorKindParseFailure, ErrorKindNotEnoughData:
+		return true
+	default:
+		return false
+	}
+}
+
 type Evidence struct {
 	Label  string `json:"label"`
 	Detail string `json:"detail"`
@@ -148,6 +157,8 @@ func (unknown Unknown) Validate() error {
 		return errors.New("unknown reason is required")
 	case strings.TrimSpace(string(unknown.Error)) == "":
 		return errors.New("unknown error kind is required")
+	case !unknown.Error.Valid():
+		return fmt.Errorf("unknown error kind %q is invalid", unknown.Error)
 	default:
 		return nil
 	}
@@ -189,11 +200,17 @@ type Report struct {
 
 func BuildReport(host Host, generatedAt time.Time, duration time.Duration, findings []Finding, unknowns []Unknown) (Report, error) {
 	report := Report{
-		SchemaVersion:        SchemaVersion,
-		GeneratedAt:          generatedAt.UTC(),
-		Duration:             duration.Round(time.Millisecond).String(),
-		Host:                 host,
-		Summary:              Summary{SeverityCounts: map[Severity]int{}},
+		SchemaVersion: SchemaVersion,
+		GeneratedAt:   generatedAt.UTC(),
+		Duration:      duration.Round(time.Millisecond).String(),
+		Host:          host,
+		Summary: Summary{SeverityCounts: map[Severity]int{
+			SeverityCritical:      0,
+			SeverityHigh:          0,
+			SeverityMedium:        0,
+			SeverityLow:           0,
+			SeverityInformational: 0,
+		}},
 		DirectFindings:       []Finding{},
 		HeuristicFindings:    []Finding{},
 		CompromiseIndicators: []Finding{},

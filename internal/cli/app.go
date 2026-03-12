@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/nagi/larainspect/internal/model"
 )
 
 type App struct {
@@ -36,7 +38,7 @@ func (app App) Run(ctx context.Context, args []string) int {
 	default:
 		fmt.Fprintf(app.stderr, "unknown command %q\n\n", args[0])
 		app.printRootHelp(app.stderr)
-		return 1
+		return int(model.ExitCodeUsageError)
 	}
 }
 

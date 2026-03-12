@@ -19,6 +19,16 @@ This repository is intended to stay beginner-friendly, explicit, and easy to ext
 - Run the CLI: `go run ./cmd/larainspect audit`
 - Render JSON: `go run ./cmd/larainspect audit --format json`
 
+## Exit-code contract
+
+- `0`: clean audit with no findings or unknowns
+- `2`: usage or flag error
+- `10`: low or informational risk, or unknown-only result
+- `20`: medium-risk finding present
+- `30`: high-risk finding present
+- `40`: critical-risk finding present
+- `50`: audit execution failure
+
 ## Testing strategy
 
 - Keep unit tests close to the package under test.

@@ -26,6 +26,8 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - The public JSON report draft version is `v0alpha1`
 - Foundation keeps execution sequential but carries a `WorkerLimit` through the execution context for later bounded concurrency
 - Golden report tests live alongside reporter packages and shared deterministic fixtures live in `internal/testfixtures`
+- Foundation exit codes are severity-based: `0`, `2`, `10`, `20`, `30`, `40`, and `50`
+- JSON severity summaries keep all severity buckets present, including zero counts, for machine-readable stability
 
 ## Architecture Direction
 
