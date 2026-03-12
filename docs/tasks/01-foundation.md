@@ -6,7 +6,7 @@ Create the maintainable project skeleton and the stable public contracts.
 
 ## Tasks
 
-- Initialize the standalone CLI project structure for `larainspect`.
+- Initialize the standalone Go CLI project structure for `larainspect`.
 - Define the CLI entrypoint and command surface for `audit`.
 - Implement the finding model, severity taxonomy, confidence taxonomy, and unknown/error model.
 - Implement reporter interfaces for terminal and JSON output.
@@ -14,10 +14,11 @@ Create the maintainable project skeleton and the stable public contracts.
 - Define the shared execution context passed into discovery and checks.
 - Define check registration/loading so new checks do not require core rewrites.
 - Create the first test fixtures and golden-output harness.
+- Lock the package boundaries for `runner`, `discovery`, `checks`, `correlators`, and `reporters`.
 
 ## Deliverables
 
-- runnable CLI skeleton
+- runnable Go CLI skeleton
 - stable finding schema
 - stable JSON schema draft
 - contributor-safe extension pattern

@@ -10,13 +10,17 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Operating mode: read-only by default
 - Primary audience: operators, security engineers, Laravel teams, incident responders, and auditors
 - Style target: Laravel-like CLI UX without requiring installation inside a Laravel application
+- Implementation language: Go
+- Distribution model: standalone static-ish Go binary, no internet dependency during audit runs
 
 ## Architecture Direction
 
-- Build the tool as a modular standalone PHP CLI application.
+- Build the tool as a modular standalone Go CLI application.
 - Keep system inspection command usage behind one safe command runner.
 - Keep findings in a normalized schema shared by terminal and JSON reporters.
 - Separate discovery, checks, correlation, and reporting.
+- Use compile-time registration for checks instead of runtime plugin loading.
+- Treat the discovered host/app state as a normalized snapshot consumed by checks.
 
 ## Detection Policy
 
@@ -39,8 +43,8 @@ This file stores stable project decisions, assumptions, and constraints that sho
 
 ## Open Questions
 
-- Exact package/dependency footprint for the standalone PHP CLI
-- Whether v1 ships as raw source only or also as PHAR
+- Exact package/dependency footprint for the standalone Go CLI
+- Whether v1 ships as raw source only or also as prebuilt release binaries
 - Whether to support check filtering and profiles in the first release
 
 ## Update Rule

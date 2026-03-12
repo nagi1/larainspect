@@ -2,7 +2,7 @@
 
 ## Project
 
-Build `larainspect`, an open-source, read-only Laravel Linux VPS security auditor CLI.
+Build `larainspect`, an open-source, read-only Laravel Linux VPS security auditor CLI written in Go.
 
 ## Mission
 
@@ -71,6 +71,14 @@ Every finding must contain:
 - structured finding model
 - pluggable reporters
 - fixture-driven tests
+
+Implementation direction:
+
+- build as a standalone Go binary
+- prefer standard library plus a minimal dependency set
+- keep shell execution behind one safe command-runner
+- use compile-time check registration rather than runtime plugins
+- make new checks easy to add without touching reporters or core execution flow
 
 ## v1 Delivery Sequence
 
