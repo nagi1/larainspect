@@ -61,6 +61,7 @@ This repository is intended to stay beginner-friendly, explicit, and easy to ext
 5. Add or update fixture data if the public report output changes.
 
 Checks must not execute shell commands directly. Use the execution context's command executor.
+Package-level guidance for the extension points lives in the local `doc.go` files under `internal/checks`, `internal/discovery`, `internal/correlators`, and `internal/report/schema`.
 
 ## Golden-file rules
 

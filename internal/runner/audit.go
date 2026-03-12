@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -18,6 +19,11 @@ type Auditor struct {
 	Correlators []correlators.Correlator
 }
 
+var (
+	ErrMissingCommandExecutor  = errors.New("missing command executor")
+	ErrMissingDiscoveryService = errors.New("missing discovery service")
+)
+
 func DefaultWorkerLimit() int {
 	if runtime.NumCPU() < 4 {
 		return runtime.NumCPU()
@@ -27,6 +33,10 @@ func DefaultWorkerLimit() int {
 }
 
 func NewExecutionContext(config model.AuditConfig, commands model.CommandExecutor) (model.ExecutionContext, error) {
+	if commands == nil {
+		return model.ExecutionContext{}, ErrMissingCommandExecutor
+	}
+
 	hostname, err := runtimeHostname()
 	if err != nil {
 		return model.ExecutionContext{}, err
@@ -59,6 +69,10 @@ func NewExecutionContext(config model.AuditConfig, commands model.CommandExecuto
 }
 
 func (auditor Auditor) Run(ctx context.Context, execution model.ExecutionContext) (model.Report, error) {
+	if auditor.Discovery == nil {
+		return model.Report{}, ErrMissingDiscoveryService
+	}
+
 	startedAt := execution.StartedAt
 
 	snapshot, unknowns, err := auditor.Discovery.Discover(ctx, execution)
