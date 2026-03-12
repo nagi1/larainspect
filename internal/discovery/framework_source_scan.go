@@ -21,7 +21,9 @@ var frameworkHeuristicOptionalFiles = []string{
 	"app/Http/Middleware/TrustHosts.php",
 	"app/Http/Middleware/TrustProxies.php",
 	"app/Http/Middleware/VerifyCsrfToken.php",
+	"app/Http/Middleware/HandleInertiaRequests.php",
 	"bootstrap/app.php",
+	"config/fortify.php",
 	"config/livewire.php",
 	"config/session.php",
 	"routes/api.php",
@@ -36,6 +38,24 @@ var frameworkHeuristicOptionalDirectories = []string{
 }
 
 var livewireSensitivePublicPropertyPattern = regexp.MustCompile(`(?m)public\s+\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+var (
+	laravelCSRFWildcardExceptPattern              = regexp.MustCompile(`(?s)\$except\s*=\s*\[[^\]]*['"]\*['"][^\]]*\]`)
+	laravelCSRFWildcardBootstrapPattern           = regexp.MustCompile(`(?s)validateCsrfTokens\s*\(\s*except:\s*\[[^\]]*['"]\*['"][^\]]*\]`)
+	laravelSessionSecureCookieFalsePattern        = regexp.MustCompile(`(?m)['"]secure['"]\s*=>\s*(?:false|env\(\s*['"]SESSION_SECURE_COOKIE['"]\s*,\s*false\s*\))`)
+	laravelAdminRoutePrefixPattern                = regexp.MustCompile(`(?m)Route::prefix\(\s*['"]admin(?:/[^'"]*)?['"]`)
+	laravelAdminRouteURIPathPattern               = regexp.MustCompile(`(?m)Route::(?:any|delete|get|match|options|patch|post|put|redirect|view)\(\s*['"]/?admin(?:/[^'"]*)?['"]`)
+	laravelLoginRoutePathPattern                  = regexp.MustCompile(`(?m)Route::(?:any|get|match|options|patch|post|put|view)\(\s*['"]/?login(?:/[^'"]*)?['"]`)
+	laravelAuthMiddlewarePattern                  = regexp.MustCompile(`(?m)(?:->middleware\(\s*(?:\[[^\]]*['"]auth[^'"]*['"][^\]]*\]|['"]auth[^'"]*['"])|Authenticate::class)`)
+	laravelThrottleMiddlewarePattern              = regexp.MustCompile(`(?m)(?:->middleware\(\s*(?:\[[^\]]*['"]throttle(?::[^'"]*)?['"][^\]]*\]|['"]throttle(?::[^'"]*)?['"])|ThrottleRequests::class)`)
+	livewireTemporaryUploadPublicDiskPattern      = regexp.MustCompile(`(?s)['"]temporary_file_upload['"]\s*=>\s*\[[^\]]*['"]disk['"]\s*=>\s*['"]public['"]`)
+	livewireTemporaryUploadPublicDirectoryPattern = regexp.MustCompile(`(?s)['"]temporary_file_upload['"]\s*=>\s*\[[^\]]*['"]directory['"]\s*=>\s*['"][^'"]*public[^'"]*['"]`)
+	livewireComponentInheritancePattern           = regexp.MustCompile(`(?s)(?:use\s+Livewire\\Component\s*;.*class\s+[A-Za-z_][A-Za-z0-9_]*\s+extends\s+Component\b|class\s+[A-Za-z_][A-Za-z0-9_]*\s+extends\s+\\?Livewire\\Component\b)`)
+	fortifyRegistrationFeaturePattern             = regexp.MustCompile(`Features::registration\s*\(`)
+	fortifyTwoFactorFeaturePattern                = regexp.MustCompile(`Features::twoFactorAuthentication\s*\(`)
+	inertiaShareSignalPattern                     = regexp.MustCompile(`(?m)(?:Inertia::share\s*\(|function\s+share\s*\([^)]*\)\s*:\s*array)`)
+	inertiaSensitiveSharedPropPattern             = regexp.MustCompile(`(?i)\b(password|secret|api[_-]?key|app[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|bearer)\b`)
+)
 
 func (service SnapshotService) collectFrameworkSourceMatches(ctx context.Context, rootPath string) ([]model.SourceMatch, []model.Unknown) {
 	matches := []model.SourceMatch{}
@@ -176,10 +196,13 @@ func (service SnapshotService) collectSourceMatchesFromOptionalFile(
 }
 
 func detectFrameworkSourceMatches(relativePath string, fileContents string) []model.SourceMatch {
+	sanitizedFileContents := stripPHPCommentsPreservingNewlines(fileContents)
 	matches := []model.SourceMatch{}
-	matches = append(matches, detectLaravelFrameworkSourceMatches(relativePath, fileContents)...)
-	matches = append(matches, detectLivewireFrameworkSourceMatches(relativePath, fileContents)...)
-	matches = append(matches, detectFilamentFrameworkSourceMatches(relativePath, fileContents)...)
+	matches = append(matches, detectLaravelFrameworkSourceMatches(relativePath, sanitizedFileContents)...)
+	matches = append(matches, detectLivewireFrameworkSourceMatches(relativePath, sanitizedFileContents)...)
+	matches = append(matches, detectFilamentFrameworkSourceMatches(relativePath, sanitizedFileContents)...)
+	matches = append(matches, detectFortifyFrameworkSourceMatches(relativePath, sanitizedFileContents)...)
+	matches = append(matches, detectInertiaFrameworkSourceMatches(relativePath, sanitizedFileContents)...)
 	model.SortSourceMatches(matches)
 
 	return matches
@@ -205,21 +228,12 @@ func detectLaravelFrameworkSourceMatches(relativePath string, fileContents strin
 	}
 
 	if relativePath == "app/Http/Middleware/VerifyCsrfToken.php" || relativePath == "bootstrap/app.php" {
-		matches = appendSourceMatchIfContainsAll(matches, relativePath, fileContents, "laravel.csrf.except_all", "disables CSRF coverage broadly with wildcard exclusions", []string{
-			"*",
-		}, []string{
-			"$except = [",
-			"validateCsrfTokens(except:",
-		})
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.csrf.except_all", "disables CSRF coverage broadly with wildcard exclusions", laravelCSRFWildcardExceptPattern)
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.csrf.except_all", "disables CSRF coverage broadly with wildcard exclusions", laravelCSRFWildcardBootstrapPattern)
 	}
 
 	if relativePath == "config/session.php" {
-		matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.session.secure_cookie_false", "does not show an obvious secure-cookie default for sessions", []string{
-			"'secure' => false",
-			"'secure' => env('SESSION_SECURE_COOKIE', false)",
-			`"secure" => false`,
-			`"secure" => env("SESSION_SECURE_COOKIE", false)`,
-		})
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.session.secure_cookie_false", "does not show an obvious secure-cookie default for sessions", laravelSessionSecureCookieFalsePattern)
 	}
 
 	if relativePath == "routes/web.php" || relativePath == "routes/api.php" {
@@ -230,40 +244,18 @@ func detectLaravelFrameworkSourceMatches(relativePath string, fileContents strin
 }
 
 func appendRouteHeuristicMatches(matches []model.SourceMatch, relativePath string, fileContents string) []model.SourceMatch {
-	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.route.admin_path", "defines an admin-like route path or prefix", []string{
-		"Route::prefix('admin'",
-		`Route::prefix("admin"`,
-		"Route::middleware('admin'",
-		`Route::middleware("admin"`,
-		"'/admin'",
-		`"/admin"`,
+	matches = appendSourceMatchIfMatchesAnyRegex(matches, relativePath, fileContents, "laravel.route.admin_path", "defines an admin-like route path or prefix", []*regexp.Regexp{
+		laravelAdminRoutePrefixPattern,
+		laravelAdminRouteURIPathPattern,
 	})
-	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.route.login_path", "defines a custom login route", []string{
-		"Route::get('login'",
-		`Route::get("login"`,
-		"Route::post('login'",
-		`Route::post("login"`,
-	})
-	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.route.auth_middleware", "shows explicit auth middleware on route definitions", []string{
-		"->middleware('auth",
-		`->middleware("auth`,
-		"->middleware(['auth",
-		`->middleware(["auth`,
-		"Authenticate::class",
-	})
-	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.route.throttle_middleware", "shows explicit throttling middleware on route definitions", []string{
-		"throttle:",
-		"->middleware('throttle",
-		`->middleware("throttle`,
-		"ThrottleRequests::class",
-	})
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.route.login_path", "defines a custom login route", laravelLoginRoutePathPattern)
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.route.auth_middleware", "shows explicit auth middleware on route definitions", laravelAuthMiddlewarePattern)
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "laravel.route.throttle_middleware", "shows explicit throttling middleware on route definitions", laravelThrottleMiddlewarePattern)
 
 	if relativePath == "routes/api.php" {
-		matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "laravel.route.api_admin_path", "defines an admin-like endpoint inside routes/api.php", []string{
-			"Route::prefix('admin'",
-			`Route::prefix("admin"`,
-			"'/admin'",
-			`"/admin"`,
+		matches = appendSourceMatchIfMatchesAnyRegex(matches, relativePath, fileContents, "laravel.route.api_admin_path", "defines an admin-like endpoint inside routes/api.php", []*regexp.Regexp{
+			laravelAdminRoutePrefixPattern,
+			laravelAdminRouteURIPathPattern,
 		})
 	}
 
@@ -274,15 +266,8 @@ func detectLivewireFrameworkSourceMatches(relativePath string, fileContents stri
 	matches := []model.SourceMatch{}
 
 	if relativePath == "config/livewire.php" {
-		matches = appendSourceMatchIfContainsAll(matches, relativePath, fileContents, "livewire.temporary_upload.public_disk", "stores temporary Livewire uploads on the public disk", []string{
-			"temporary_file_upload",
-			"'disk' => 'public'",
-		}, nil)
-		matches = appendSourceMatchIfContainsAll(matches, relativePath, fileContents, "livewire.temporary_upload.public_directory", "uses a public temporary upload directory for Livewire uploads", []string{
-			"temporary_file_upload",
-			"public",
-			"'directory' =>",
-		}, nil)
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "livewire.temporary_upload.public_disk", "stores temporary Livewire uploads on the public disk", livewireTemporaryUploadPublicDiskPattern)
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "livewire.temporary_upload.public_directory", "uses a public temporary upload directory for Livewire uploads", livewireTemporaryUploadPublicDirectoryPattern)
 	}
 
 	if !looksLikeLivewireComponent(relativePath, fileContents) {
@@ -307,6 +292,8 @@ func detectLivewireFrameworkSourceMatches(relativePath string, fileContents stri
 	matches = appendLivewireSensitivePropertyMatches(matches, relativePath, fileContents)
 	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "livewire.component.locked_attribute", "shows a Locked attribute on a public property", []string{
 		"#[Locked]",
+		"#[Locked",
+		"Locked]",
 	})
 	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "livewire.component.mutates_model_state", "mutates model state inside the component", []string{
 		"->save(",
@@ -411,10 +398,56 @@ func detectFilamentFrameworkSourceMatches(relativePath string, fileContents stri
 	return matches
 }
 
+func detectFortifyFrameworkSourceMatches(relativePath string, fileContents string) []model.SourceMatch {
+	if relativePath != "config/fortify.php" {
+		return nil
+	}
+
+	matches := []model.SourceMatch{
+		{
+			RuleID:       "fortify.file.detected",
+			RelativePath: relativePath,
+			Line:         1,
+			Detail:       "detected a Fortify configuration file",
+		},
+	}
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "fortify.feature.registration", "enables the Fortify registration feature", fortifyRegistrationFeaturePattern)
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "fortify.feature.two_factor", "enables the Fortify two-factor authentication feature", fortifyTwoFactorFeaturePattern)
+
+	return matches
+}
+
+func detectInertiaFrameworkSourceMatches(relativePath string, fileContents string) []model.SourceMatch {
+	if !looksLikeInertiaFile(relativePath, fileContents) {
+		return nil
+	}
+
+	matches := []model.SourceMatch{
+		{
+			RuleID:       "inertia.file.detected",
+			RelativePath: relativePath,
+			Line:         1,
+			Detail:       "detected an Inertia middleware or shared-props file",
+		},
+	}
+	matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "inertia.shared_props.detected", "defines Inertia shared props", inertiaShareSignalPattern)
+	if inertiaShareSignalPattern.MatchString(fileContents) {
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, "inertia.shared_props.sensitive_data", "appears to share sensitive values through Inertia props", inertiaSensitiveSharedPropPattern)
+	}
+
+	return matches
+}
+
 func looksLikeLivewireComponent(relativePath string, fileContents string) bool {
-	return strings.HasPrefix(relativePath, "app/Livewire/") ||
-		strings.HasPrefix(relativePath, "app/Http/Livewire/") ||
-		strings.Contains(fileContents, "Livewire\\Component")
+	if strings.HasPrefix(relativePath, "app/Livewire/") || strings.HasPrefix(relativePath, "app/Http/Livewire/") {
+		return true
+	}
+
+	if !livewireComponentInheritancePattern.MatchString(fileContents) {
+		return false
+	}
+
+	return strings.Contains(fileContents, "Livewire\\Component")
 }
 
 func looksLikeFilamentFile(relativePath string, fileContents string) bool {
@@ -425,6 +458,12 @@ func looksLikeFilamentFile(relativePath string, fileContents string) bool {
 
 func looksLikeFilamentResourceFile(relativePath string) bool {
 	return strings.Contains(relativePath, "/Resources/") || strings.HasSuffix(relativePath, "Resource.php")
+}
+
+func looksLikeInertiaFile(relativePath string, fileContents string) bool {
+	return relativePath == "app/Http/Middleware/HandleInertiaRequests.php" ||
+		strings.Contains(fileContents, "Inertia::share(") ||
+		strings.Contains(fileContents, "Inertia\\")
 }
 
 func isLikelySecuritySensitiveLivewireProperty(propertyName string) bool {
@@ -502,6 +541,55 @@ func appendSourceMatchIfContainsAll(
 	return matches
 }
 
+func appendSourceMatchIfMatchesRegex(
+	matches []model.SourceMatch,
+	relativePath string,
+	fileContents string,
+	ruleID string,
+	detail string,
+	pattern *regexp.Regexp,
+) []model.SourceMatch {
+	matchIndexes := pattern.FindStringIndex(fileContents)
+	if matchIndexes == nil {
+		return matches
+	}
+
+	return append(matches, model.SourceMatch{
+		RuleID:       ruleID,
+		RelativePath: relativePath,
+		Line:         lineNumberForOffset(fileContents, matchIndexes[0]),
+		Detail:       detail,
+	})
+}
+
+func appendSourceMatchIfMatchesAnyRegex(
+	matches []model.SourceMatch,
+	relativePath string,
+	fileContents string,
+	ruleID string,
+	detail string,
+	patterns []*regexp.Regexp,
+) []model.SourceMatch {
+	for _, pattern := range patterns {
+		matches = appendSourceMatchIfMatchesRegex(matches, relativePath, fileContents, ruleID, detail, pattern)
+		if containsRuleIDAtRelativePath(matches, ruleID, relativePath) {
+			return matches
+		}
+	}
+
+	return matches
+}
+
+func containsRuleIDAtRelativePath(matches []model.SourceMatch, ruleID string, relativePath string) bool {
+	for _, match := range matches {
+		if match.RuleID == ruleID && match.RelativePath == relativePath {
+			return true
+		}
+	}
+
+	return false
+}
+
 func lineNumberForSubstring(fileContents string, substring string) int {
 	offset := strings.Index(fileContents, substring)
 	if offset < 0 {
@@ -517,4 +605,97 @@ func lineNumberForOffset(fileContents string, offset int) int {
 	}
 
 	return strings.Count(fileContents[:offset], "\n") + 1
+}
+
+func stripPHPCommentsPreservingNewlines(fileContents string) string {
+	if fileContents == "" {
+		return ""
+	}
+
+	input := []byte(fileContents)
+	output := make([]byte, len(input))
+	inSingleQuotedString := false
+	inDoubleQuotedString := false
+	inLineComment := false
+	inBlockComment := false
+
+	for index := 0; index < len(input); index++ {
+		currentByte := input[index]
+		nextByte := byte(0)
+		if index+1 < len(input) {
+			nextByte = input[index+1]
+		}
+
+		switch {
+		case inLineComment:
+			if currentByte == '\n' {
+				inLineComment = false
+				output[index] = '\n'
+				continue
+			}
+
+			output[index] = ' '
+		case inBlockComment:
+			if currentByte == '*' && nextByte == '/' {
+				output[index] = ' '
+				output[index+1] = ' '
+				index++
+				inBlockComment = false
+				continue
+			}
+
+			if currentByte == '\n' {
+				output[index] = '\n'
+				continue
+			}
+
+			output[index] = ' '
+		case inSingleQuotedString:
+			output[index] = currentByte
+			if currentByte == '\\' && index+1 < len(input) {
+				output[index+1] = input[index+1]
+				index++
+				continue
+			}
+			if currentByte == '\'' {
+				inSingleQuotedString = false
+			}
+		case inDoubleQuotedString:
+			output[index] = currentByte
+			if currentByte == '\\' && index+1 < len(input) {
+				output[index+1] = input[index+1]
+				index++
+				continue
+			}
+			if currentByte == '"' {
+				inDoubleQuotedString = false
+			}
+		default:
+			switch {
+			case currentByte == '/' && nextByte == '/':
+				output[index] = ' '
+				output[index+1] = ' '
+				index++
+				inLineComment = true
+			case currentByte == '/' && nextByte == '*':
+				output[index] = ' '
+				output[index+1] = ' '
+				index++
+				inBlockComment = true
+			case currentByte == '#' && nextByte != '[':
+				output[index] = ' '
+				inLineComment = true
+			default:
+				output[index] = currentByte
+				if currentByte == '\'' {
+					inSingleQuotedString = true
+				}
+				if currentByte == '"' {
+					inDoubleQuotedString = true
+				}
+			}
+		}
+	}
+
+	return string(output)
 }

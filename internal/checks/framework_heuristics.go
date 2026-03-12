@@ -26,6 +26,8 @@ func (FrameworkHeuristicsCheck) Run(_ context.Context, _ model.ExecutionContext,
 		findings = append(findings, buildLaravelFrameworkHeuristicFindings(app)...)
 		findings = append(findings, buildLivewireFrameworkHeuristicFindings(app)...)
 		findings = append(findings, buildFilamentFrameworkHeuristicFindings(app)...)
+		findings = append(findings, buildFortifyFrameworkHeuristicFindings(app)...)
+		findings = append(findings, buildInertiaFrameworkHeuristicFindings(app)...)
 		findings = append(findings, buildAdminSurfaceHeuristicFindings(app)...)
 	}
 
@@ -77,7 +79,7 @@ func buildLaravelFrameworkHeuristicFindings(app model.LaravelApp) []model.Findin
 		))
 	}
 
-	if sessionSecureCookieMatches := sourceMatchesForRule(app, "laravel.session.secure_cookie_false"); len(sessionSecureCookieMatches) > 0 {
+	if sessionSecureCookieMatches := sourceMatchesForRule(app, "laravel.session.secure_cookie_false"); len(sessionSecureCookieMatches) > 0 && !appHasSecureSessionCookieRuntimeOverride(app) {
 		findings = append(findings, buildHeuristicFindingForSourceMatches(
 			"session_secure_cookie_default",
 			app,
@@ -139,6 +141,54 @@ func buildLaravelFrameworkHeuristicFindings(app model.LaravelApp) []model.Findin
 			"Blending browser-admin and API routes increases the chance of missing session, CSRF, or guard assumptions when the app evolves.",
 			"Keep admin surfaces clearly separated from API route groups and verify the exact guard, middleware, and session model intended for each surface.",
 			apiAdminMatches,
+			nil,
+		))
+	}
+
+	return findings
+}
+
+func buildFortifyFrameworkHeuristicFindings(app model.LaravelApp) []model.Finding {
+	if !appUsesPackage(app, "laravel/fortify") && len(sourceMatchesWithPrefix(app, "fortify.")) == 0 {
+		return nil
+	}
+
+	findings := []model.Finding{}
+
+	if registrationMatches := sourceMatchesForRule(app, "fortify.feature.registration"); len(registrationMatches) > 0 {
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"fortify_registration_enabled",
+			app,
+			model.SeverityMedium,
+			model.ConfidenceProbable,
+			"Fortify self-registration appears enabled",
+			"Public self-registration expands the authentication surface and usually needs deliberate review for abuse controls, onboarding policy, and account verification.",
+			"Confirm self-registration is intentionally public, require appropriate verification or approval steps, and disable the feature where accounts should be provisioned centrally.",
+			registrationMatches,
+			nil,
+		))
+	}
+
+	return findings
+}
+
+func buildInertiaFrameworkHeuristicFindings(app model.LaravelApp) []model.Finding {
+	if !appUsesPackage(app, "inertiajs/inertia-laravel") && len(sourceMatchesWithPrefix(app, "inertia.")) == 0 {
+		return nil
+	}
+
+	findings := []model.Finding{}
+
+	if sensitiveSharedPropMatches := sourceMatchesForRule(app, "inertia.shared_props.sensitive_data"); len(sensitiveSharedPropMatches) > 0 {
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"inertia_sensitive_shared_props",
+			app,
+			model.SeverityHigh,
+			model.ConfidenceProbable,
+			"Inertia shared props appear to expose sensitive values",
+			"Shared Inertia props are delivered broadly to client-side pages, so secrets, tokens, and privileged values can leak beyond the server-side trust boundary quickly.",
+			"Remove sensitive values from shared props, derive only the minimum safe client state, and keep secrets or bearer-style tokens on the server side.",
+			sensitiveSharedPropMatches,
 			nil,
 		))
 	}
@@ -490,6 +540,14 @@ func packageRecordComesFromInstalledMetadata(packageRecord model.PackageRecord) 
 	default:
 		return false
 	}
+}
+
+func appHasSecureSessionCookieRuntimeOverride(app model.LaravelApp) bool {
+	if !app.Environment.SessionSecureCookieDefined {
+		return false
+	}
+
+	return boolFromEnvironmentValue(app.Environment.SessionSecureCookieValue)
 }
 
 func buildHeuristicFindingForSourceMatches(

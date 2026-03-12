@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nagi1/larainspect/internal/model"
@@ -74,6 +75,90 @@ class UserResource
 		!containsSourceMatch(filamentMatches, "filament.resource.sensitive_field") {
 		t.Fatalf("expected Filament heuristic matches, got %+v", filamentMatches)
 	}
+
+	fortifyMatches := detectFrameworkSourceMatches("config/fortify.php", `<?php
+use Laravel\Fortify\Features;
+
+return [
+    'features' => [
+        Features::registration(),
+        Features::twoFactorAuthentication(),
+    ],
+];
+`)
+	if !containsSourceMatch(fortifyMatches, "fortify.file.detected") ||
+		!containsSourceMatch(fortifyMatches, "fortify.feature.registration") ||
+		!containsSourceMatch(fortifyMatches, "fortify.feature.two_factor") {
+		t.Fatalf("expected Fortify heuristic matches, got %+v", fortifyMatches)
+	}
+
+	inertiaMatches := detectFrameworkSourceMatches("app/Http/Middleware/HandleInertiaRequests.php", `<?php
+use Inertia\Middleware;
+
+class HandleInertiaRequests extends Middleware
+{
+    public function share(): array
+    {
+        return [
+            'api_key' => config('services.demo.api_key'),
+        ];
+    }
+}
+`)
+	if !containsSourceMatch(inertiaMatches, "inertia.file.detected") ||
+		!containsSourceMatch(inertiaMatches, "inertia.shared_props.detected") ||
+		!containsSourceMatch(inertiaMatches, "inertia.shared_props.sensitive_data") {
+		t.Fatalf("expected Inertia heuristic matches, got %+v", inertiaMatches)
+	}
+}
+
+func TestDetectFrameworkSourceMatchesAvoidsCommentDrivenFalsePositives(t *testing.T) {
+	t.Parallel()
+
+	laravelMatches := detectFrameworkSourceMatches("app/Http/Middleware/VerifyCsrfToken.php", `<?php
+class VerifyCsrfToken
+{
+    /*
+     * $except = ['*'];
+     */
+}
+`)
+	if containsSourceMatch(laravelMatches, "laravel.csrf.except_all") {
+		t.Fatalf("did not expect commented CSRF wildcard match, got %+v", laravelMatches)
+	}
+
+	routeMatches := detectFrameworkSourceMatches("routes/web.php", `<?php
+// Route::get('/admin', fn () => redirect('/login'));
+$redirectTarget = '/admin';
+`)
+	if containsSourceMatch(routeMatches, "laravel.route.admin_path") || containsSourceMatch(routeMatches, "laravel.route.login_path") {
+		t.Fatalf("did not expect commented or dead-string route matches, got %+v", routeMatches)
+	}
+
+	livewireConfigMatches := detectFrameworkSourceMatches("config/livewire.php", `<?php
+return [
+    'temporary_file_upload' => [
+        'disk' => 'local',
+        'directory' => 'tmp-livewire',
+    ],
+    // public disk uploads are disabled here.
+];
+`)
+	if containsSourceMatch(livewireConfigMatches, "livewire.temporary_upload.public_directory") {
+		t.Fatalf("did not expect unrelated public token to match, got %+v", livewireConfigMatches)
+	}
+
+	livewireMatches := detectFrameworkSourceMatches("app/Providers/AppServiceProvider.php", `<?php
+use Livewire\Component;
+
+class AppServiceProvider
+{
+    // public $tenant_id;
+}
+`)
+	if containsSourceMatch(livewireMatches, "livewire.component.detected") || containsSourceMatch(livewireMatches, "livewire.component.public_sensitive_property") {
+		t.Fatalf("did not expect commented Livewire component/property matches, got %+v", livewireMatches)
+	}
 }
 
 func TestCollectSourceMatchesFromOptionalFileHandlesEdgeCases(t *testing.T) {
@@ -141,7 +226,7 @@ func TestCollectSourceMatchesFromOptionalDirectoryHandlesWalkFailures(t *testing
 func TestFrameworkSourceHelperFunctions(t *testing.T) {
 	t.Parallel()
 
-	if !looksLikeLivewireComponent("app/Livewire/EditTenant.php", "") {
+	if !looksLikeLivewireComponent("app/Livewire/EditTenant.php", "<?php\nuse Livewire\\Component;\nclass EditTenant extends Component {}\n") {
 		t.Fatal("expected Livewire component path to match")
 	}
 	if looksLikeLivewireComponent("app/Models/User.php", "") {
@@ -165,11 +250,22 @@ func TestFrameworkSourceHelperFunctions(t *testing.T) {
 	if isLikelySecuritySensitiveLivewireProperty("search") {
 		t.Fatal("expected search to be treated as non-sensitive")
 	}
+	if !looksLikeInertiaFile("app/Http/Middleware/HandleInertiaRequests.php", "") {
+		t.Fatal("expected Inertia middleware path to match")
+	}
 	if got := lineNumberForSubstring("one\ntwo", "missing"); got != 0 {
 		t.Fatalf("lineNumberForSubstring() missing = %d, want 0", got)
 	}
 	if got := lineNumberForOffset("one\ntwo\nthree", 5); got != 2 {
 		t.Fatalf("lineNumberForOffset() = %d, want 2", got)
+	}
+
+	stripped := stripPHPCommentsPreservingNewlines("<?php\n// comment\n'value' /* block */\n")
+	if strings.Contains(stripped, "comment") || strings.Contains(stripped, "block") {
+		t.Fatalf("expected comments to be stripped, got %q", stripped)
+	}
+	if !strings.Contains(stripped, "'value'") {
+		t.Fatalf("expected string literals to be preserved, got %q", stripped)
 	}
 }
 

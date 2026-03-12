@@ -182,11 +182,19 @@ type Host struct {
 type ToolAvailability map[string]bool
 
 type Snapshot struct {
-	Host        Host             `json:"host"`
-	Tools       ToolAvailability `json:"tools,omitempty"`
-	Apps        []LaravelApp     `json:"apps,omitempty"`
-	NginxSites  []NginxSite      `json:"nginx_sites,omitempty"`
-	PHPFPMPools []PHPFPMPool     `json:"php_fpm_pools,omitempty"`
+	Host                  Host                   `json:"host"`
+	Tools                 ToolAvailability       `json:"tools,omitempty"`
+	Apps                  []LaravelApp           `json:"apps,omitempty"`
+	NginxSites            []NginxSite            `json:"nginx_sites,omitempty"`
+	PHPFPMPools           []PHPFPMPool           `json:"php_fpm_pools,omitempty"`
+	SupervisorPrograms    []SupervisorProgram    `json:"supervisor_programs,omitempty"`
+	SupervisorHTTPServers []SupervisorHTTPServer `json:"supervisor_http_servers,omitempty"`
+	SystemdUnits          []SystemdUnit          `json:"systemd_units,omitempty"`
+	CronEntries           []CronEntry            `json:"cron_entries,omitempty"`
+	Listeners             []ListenerRecord       `json:"listeners,omitempty"`
+	SSHConfigs            []SSHConfig            `json:"ssh_configs,omitempty"`
+	SudoRules             []SudoRule             `json:"sudo_rules,omitempty"`
+	FirewallSummaries     []FirewallSummary      `json:"firewall_summaries,omitempty"`
 }
 
 type Report struct {

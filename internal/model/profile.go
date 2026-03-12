@@ -119,6 +119,14 @@ func (config AuditConfig) ShouldDiscoverPHPFPM() bool {
 	return config.Profile.Switches.DiscoverPHPFPM
 }
 
+func (config AuditConfig) ShouldDiscoverSupervisor() bool {
+	return config.Profile.Switches.DiscoverSupervisor
+}
+
+func (config AuditConfig) ShouldDiscoverSystemd() bool {
+	return config.Profile.Switches.DiscoverSystemd
+}
+
 func (config AuditConfig) effectivePatternList(defaultPatterns []string, configuredPatterns []string) []string {
 	patterns := []string{}
 	if config.Profile.Paths.UseDefaultPatterns {

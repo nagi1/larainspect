@@ -23,7 +23,9 @@ var requiredLaravelMarkerFiles = []string{
 var relevantComposerPackages = []string{
 	"barryvdh/laravel-debugbar",
 	"filament/filament",
+	"inertiajs/inertia-laravel",
 	"itsgoingd/clockwork",
+	"laravel/fortify",
 	"laravel/framework",
 	"laravel/horizon",
 	"laravel/octane",
@@ -204,11 +206,12 @@ func (service SnapshotService) inspectLaravelApplication(ctx context.Context, ro
 
 	model.SortPackageRecords(app.Packages)
 
-	keyPaths, environment, artifacts, sourceMatches, metadataUnknowns := service.collectApplicationMetadata(ctx, rootPath)
+	keyPaths, environment, artifacts, sourceMatches, deploymentInfo, metadataUnknowns := service.collectApplicationMetadata(ctx, rootPath, app.ResolvedPath)
 	app.KeyPaths = keyPaths
 	app.Environment = environment
 	app.Artifacts = artifacts
 	app.SourceMatches = sourceMatches
+	app.Deployment = deploymentInfo
 	unknowns = append(unknowns, metadataUnknowns...)
 
 	return app, unknowns, true

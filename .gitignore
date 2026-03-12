@@ -10,3 +10,4 @@ coverage.out
 # Local Go workspace caches
 .gocache/
 
+next-source/

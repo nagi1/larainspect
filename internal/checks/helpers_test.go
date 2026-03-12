@@ -117,6 +117,44 @@ func TestFilesystemPermissionsCheckReportsSymlinkedEnvironmentFile(t *testing.T)
 	}
 }
 
+func TestFilesystemPermissionsCheckSkipsExpectedSharedEnvironmentSymlinkInReleaseLayout(t *testing.T) {
+	t.Parallel()
+
+	app := model.LaravelApp{
+		RootPath:     "/var/www/shop/current",
+		ResolvedPath: "/var/www/shop/releases/20260312",
+		Deployment: model.DeploymentInfo{
+			UsesReleaseLayout: true,
+			CurrentPath:       "/var/www/shop/current",
+			ReleaseRoot:       "/var/www/shop/releases",
+			SharedPath:        "/var/www/shop/shared",
+		},
+		KeyPaths: []model.PathRecord{
+			{
+				RelativePath: ".env",
+				AbsolutePath: "/var/www/shop/current/.env",
+				ResolvedPath: "/var/www/shop/shared/.env",
+				PathKind:     model.PathKindSymlink,
+				TargetKind:   model.PathKindFile,
+				Inspected:    true,
+				Exists:       true,
+				Permissions:  0o640,
+			},
+		},
+	}
+
+	result, err := FilesystemPermissionsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 0 {
+		t.Fatalf("expected no findings, got %+v", result.Findings)
+	}
+}
+
 func TestNginxAndPHPFPMChecksSkipSafeConfigurations(t *testing.T) {
 	t.Parallel()
 

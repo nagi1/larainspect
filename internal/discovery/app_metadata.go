@@ -21,18 +21,20 @@ func expectedLaravelPathList() []string {
 	return relativePaths
 }
 
-func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string) ([]model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.SourceMatch, []model.Unknown) {
+func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string, resolvedPath string) ([]model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.SourceMatch, model.DeploymentInfo, []model.Unknown) {
 	keyPaths, pathUnknowns := service.collectKeyPathRecords(rootPath)
 	environment, environmentUnknowns := service.collectEnvironmentInfo(rootPath)
 	artifacts, artifactUnknowns := service.collectArtifactRecords(ctx, rootPath)
 	sourceMatches, sourceUnknowns := service.collectFrameworkSourceMatches(ctx, rootPath)
+	deploymentInfo, deploymentUnknowns := service.collectDeploymentInfo(rootPath, resolvedPath)
 
 	unknowns := append([]model.Unknown{}, pathUnknowns...)
 	unknowns = append(unknowns, environmentUnknowns...)
 	unknowns = append(unknowns, artifactUnknowns...)
 	unknowns = append(unknowns, sourceUnknowns...)
+	unknowns = append(unknowns, deploymentUnknowns...)
 
-	return keyPaths, environment, artifacts, sourceMatches, unknowns
+	return keyPaths, environment, artifacts, sourceMatches, deploymentInfo, unknowns
 }
 
 func (service SnapshotService) collectKeyPathRecords(rootPath string) ([]model.PathRecord, []model.Unknown) {
@@ -92,6 +94,9 @@ func parseEnvironmentInfo(envBytes []byte) model.EnvironmentInfo {
 		case "APP_KEY":
 			environment.AppKeyDefined = normalizedValue != ""
 			environment.AppKeyValue = normalizedValue
+		case "SESSION_SECURE_COOKIE":
+			environment.SessionSecureCookieDefined = true
+			environment.SessionSecureCookieValue = normalizedValue
 		}
 	}
 
@@ -208,6 +213,7 @@ func classifyArtifactPath(relativePath string, directoryEntry fs.DirEntry) (mode
 	baseName := filepath.Base(cleanRelativePath)
 	withinPublicPath := cleanRelativePath == "public" || strings.HasPrefix(cleanRelativePath, "public/")
 	uploadLikePath := withinPublicPath && looksLikeUploadPath(cleanRelativePath)
+	withinWritablePath := isWithinWritableAppPath(cleanRelativePath)
 
 	switch {
 	case isEnvironmentBackup(baseName):
@@ -220,6 +226,12 @@ func classifyArtifactPath(relativePath string, directoryEntry fs.DirEntry) (mode
 		return model.ArtifactKindPublicSensitiveFile, true, uploadLikePath, true
 	case !directoryEntry.IsDir() && withinPublicPath && uploadLikePath && strings.EqualFold(filepath.Ext(baseName), ".php"):
 		return model.ArtifactKindPublicPHPFile, true, true, true
+	case withinWritablePath && directoryEntry.Type()&fs.ModeSymlink != 0:
+		return model.ArtifactKindWritableSymlink, false, false, true
+	case withinWritablePath && !directoryEntry.IsDir() && strings.EqualFold(filepath.Ext(baseName), ".php") && !isExpectedWritablePHPPath(cleanRelativePath):
+		return model.ArtifactKindWritablePHPFile, false, false, true
+	case withinWritablePath && !directoryEntry.IsDir() && hasArchiveFileExtension(baseName):
+		return model.ArtifactKindWritableArchive, false, false, true
 	default:
 		return "", false, false, false
 	}
@@ -257,6 +269,91 @@ func hasSensitivePublicFileExtension(baseName string) bool {
 	}
 
 	return false
+}
+
+func isWithinWritableAppPath(relativePath string) bool {
+	return relativePath == "storage" ||
+		strings.HasPrefix(relativePath, "storage/") ||
+		relativePath == "bootstrap/cache" ||
+		strings.HasPrefix(relativePath, "bootstrap/cache/")
+}
+
+func hasArchiveFileExtension(baseName string) bool {
+	for _, extension := range []string{".sql", ".zip", ".tar", ".gz", ".tgz", ".bak"} {
+		if strings.EqualFold(filepath.Ext(baseName), extension) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (service SnapshotService) collectDeploymentInfo(rootPath string, resolvedPath string) (model.DeploymentInfo, []model.Unknown) {
+	deploymentInfo := model.DeploymentInfo{CurrentPath: filepath.Clean(rootPath)}
+	unknowns := []model.Unknown{}
+	cleanResolvedPath := filepath.Clean(strings.TrimSpace(resolvedPath))
+	if cleanResolvedPath == "." || cleanResolvedPath == "" || cleanResolvedPath == deploymentInfo.CurrentPath {
+		return deploymentInfo, unknowns
+	}
+
+	if filepath.Base(deploymentInfo.CurrentPath) != "current" || filepath.Base(filepath.Dir(cleanResolvedPath)) != "releases" {
+		return deploymentInfo, unknowns
+	}
+
+	releaseRoot := filepath.Dir(cleanResolvedPath)
+	sharedPath := filepath.Join(filepath.Dir(releaseRoot), "shared")
+	deploymentInfo.UsesReleaseLayout = true
+	deploymentInfo.ReleaseRoot = releaseRoot
+	deploymentInfo.SharedPath = sharedPath
+
+	releasePaths, err := service.expandConfigPattern(filepath.Join(releaseRoot, "*"))
+	if err != nil {
+		unknowns = append(unknowns, newPathUnknown(appDiscoveryCheckID, "Unable to inspect release layout", releaseRoot, err))
+		return deploymentInfo, unknowns
+	}
+
+	for _, releasePath := range releasePaths {
+		cleanReleasePath := filepath.Clean(releasePath)
+		if cleanReleasePath == cleanResolvedPath {
+			continue
+		}
+
+		releaseInfo, statErr := service.statPath(cleanReleasePath)
+		if statErr != nil || !releaseInfo.IsDir() {
+			continue
+		}
+
+		record, unknown := service.inspectPathRecord(filepath.Dir(cleanReleasePath), filepath.Base(cleanReleasePath))
+		if unknown != nil {
+			unknowns = append(unknowns, *unknown)
+			continue
+		}
+
+		deploymentInfo.PreviousReleases = append(deploymentInfo.PreviousReleases, record)
+	}
+
+	model.SortPathRecords(deploymentInfo.PreviousReleases)
+
+	return deploymentInfo, unknowns
+}
+
+func isExpectedWritablePHPPath(relativePath string) bool {
+	switch {
+	case relativePath == "bootstrap/cache/config.php":
+		return true
+	case relativePath == "bootstrap/cache/packages.php":
+		return true
+	case relativePath == "bootstrap/cache/services.php":
+		return true
+	case relativePath == "bootstrap/cache/routes.php":
+		return true
+	case strings.HasPrefix(relativePath, "bootstrap/cache/routes-") && strings.HasSuffix(relativePath, ".php"):
+		return true
+	case strings.HasPrefix(relativePath, "storage/framework/views/") && strings.HasSuffix(relativePath, ".php"):
+		return true
+	default:
+		return false
+	}
 }
 
 func matchesPublicAdminToolPath(relativePath string, directoryEntry fs.DirEntry) bool {

@@ -157,6 +157,28 @@ func TestFrameworkHeuristicsCheckLowersPackageConfidenceForDeclaredOnlyPackages(
 	}
 }
 
+func TestFrameworkHeuristicsCheckSkipsSessionSecureCookieFindingWhenEnvOverridesIt(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Environment.SessionSecureCookieDefined = true
+	app.Environment.SessionSecureCookieValue = "true"
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "laravel.session.secure_cookie_false", RelativePath: "config/session.php", Line: 12, Detail: "does not show an obvious secure-cookie default for sessions"},
+	}
+
+	result, err := checks.FrameworkHeuristicsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 0 {
+		t.Fatalf("expected runtime session override to suppress heuristic, got %+v", result.Findings)
+	}
+}
+
 func TestFrameworkHeuristicsCheckKeepsUnsafeLivewireComponentVisibleWhenAnotherComponentIsSafe(t *testing.T) {
 	t.Parallel()
 
@@ -216,6 +238,39 @@ func TestFrameworkHeuristicsCheckKeepsUnsafeFilamentResourceVisibleWhenAnotherRe
 	}
 	if evidenceContains(evidence, "/var/www/shop/app/Filament/Resources/UserResource.php") {
 		t.Fatalf("did not expect safe resource evidence, got %+v", evidence)
+	}
+}
+
+func TestFrameworkHeuristicsCheckReportsFortifyAndInertiaSignals(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Packages = []model.PackageRecord{
+		{Name: "laravel/fortify", Version: "v1.0.0", Source: "composer.lock"},
+		{Name: "inertiajs/inertia-laravel", Version: "v1.0.0", Source: "composer.lock"},
+	}
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "fortify.file.detected", RelativePath: "config/fortify.php", Line: 1, Detail: "detected a Fortify configuration file"},
+		{RuleID: "fortify.feature.registration", RelativePath: "config/fortify.php", Line: 5, Detail: "enables the Fortify registration feature"},
+		{RuleID: "inertia.file.detected", RelativePath: "app/Http/Middleware/HandleInertiaRequests.php", Line: 1, Detail: "detected an Inertia middleware or shared-props file"},
+		{RuleID: "inertia.shared_props.detected", RelativePath: "app/Http/Middleware/HandleInertiaRequests.php", Line: 7, Detail: "defines Inertia shared props"},
+		{RuleID: "inertia.shared_props.sensitive_data", RelativePath: "app/Http/Middleware/HandleInertiaRequests.php", Line: 9, Detail: "appears to share sensitive values through Inertia props"},
+	}
+
+	result, err := checks.FrameworkHeuristicsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	for _, title := range []string{
+		"Fortify self-registration appears enabled",
+		"Inertia shared props appear to expose sensitive values",
+	} {
+		if !findingTitleExists(result.Findings, title) {
+			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
+		}
 	}
 }
 

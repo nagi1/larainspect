@@ -15,6 +15,18 @@ func newTestSnapshotService() SnapshotService {
 	service := NewService()
 	service.nginxPatterns = nil
 	service.phpFPMPatterns = nil
+	service.supervisorPatterns = nil
+	service.systemdPatterns = nil
+	service.cronPatterns = nil
+	service.discoverSupervisor = false
+	service.discoverSystemd = false
+	service.discoverCron = false
+	service.discoverListeners = false
+	service.sshPatterns = nil
+	service.sudoersPatterns = nil
+	service.discoverSSH = false
+	service.discoverSudo = false
+	service.discoverFirewall = false
 	return service
 }
 
@@ -66,6 +78,55 @@ func TestNewServiceForAuditUsesProfileDrivenDiscoverySettings(t *testing.T) {
 
 	if len(service.phpFPMPatterns) != 1 || service.phpFPMPatterns[0] != "/srv/php-fpm/*.conf" {
 		t.Fatalf("unexpected php-fpm patterns %+v", service.phpFPMPatterns)
+	}
+}
+
+func TestNewServiceUsesSafeOperationalDefaults(t *testing.T) {
+	t.Parallel()
+
+	service := NewService()
+
+	if service.lookPath == nil || service.readFile == nil || service.runCommand == nil {
+		t.Fatalf("expected constructor to initialize core dependencies: %+v", service)
+	}
+	if !service.discoverNginx || !service.discoverPHPFPM || !service.discoverSupervisor || !service.discoverSystemd {
+		t.Fatalf("expected core service discovery defaults to be enabled: %+v", service)
+	}
+	if !service.discoverCron || !service.discoverListeners || !service.discoverSSH || !service.discoverSudo || !service.discoverFirewall {
+		t.Fatalf("expected operational discovery defaults to be enabled: %+v", service)
+	}
+	if len(service.nginxPatterns) == 0 || len(service.phpFPMPatterns) == 0 || len(service.supervisorPatterns) == 0 || len(service.systemdPatterns) == 0 {
+		t.Fatalf("expected built-in config patterns, got %+v", service)
+	}
+	if len(service.cronPatterns) == 0 || len(service.sshPatterns) == 0 || len(service.sudoersPatterns) == 0 {
+		t.Fatalf("expected built-in operational patterns, got %+v", service)
+	}
+
+	if _, err := service.runCommand(context.Background(), model.CommandRequest{Name: "ss"}); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("expected default runCommand to deny execution, got %v", err)
+	}
+}
+
+func TestNewServiceForAuditUsesSupervisorAndSystemdOverrides(t *testing.T) {
+	t.Parallel()
+
+	config := model.DefaultAuditConfig()
+	config.Profile.Paths.UseDefaultPatterns = false
+	config.Profile.Paths.SupervisorConfigPatterns = []string{"/srv/supervisor/*.conf"}
+	config.Profile.Paths.SystemdUnitPatterns = []string{"/srv/systemd/*.service"}
+	config.Profile.Switches.DiscoverSupervisor = false
+	config.Profile.Switches.DiscoverSystemd = false
+
+	service := NewServiceForAudit(config)
+
+	if service.discoverSupervisor || service.discoverSystemd {
+		t.Fatalf("expected supervisor and systemd discovery to be disabled: %+v", service)
+	}
+	if len(service.supervisorPatterns) != 1 || service.supervisorPatterns[0] != "/srv/supervisor/*.conf" {
+		t.Fatalf("unexpected supervisor patterns %+v", service.supervisorPatterns)
+	}
+	if len(service.systemdPatterns) != 1 || service.systemdPatterns[0] != "/srv/systemd/*.service" {
+		t.Fatalf("unexpected systemd patterns %+v", service.systemdPatterns)
 	}
 }
 
@@ -157,6 +218,107 @@ func TestSnapshotServiceDiscoversLaravelAppsFromScanRoots(t *testing.T) {
 
 	if !discoveredRoots[firstAppRoot] || !discoveredRoots[secondAppRoot] {
 		t.Fatalf("expected discovered roots %q and %q, got %+v", firstAppRoot, secondAppRoot, snapshot.Apps)
+	}
+}
+
+func TestSnapshotServiceCollectsFortifyAndInertiaPackages(t *testing.T) {
+	t.Parallel()
+
+	appRoot := createLaravelTestApp(t, t.TempDir(), false)
+	writeTestFile(t, filepath.Join(appRoot, "composer.json"), `{
+  "name": "acme/shop",
+  "require": {
+    "laravel/framework": "^11.0",
+    "laravel/fortify": "^1.0",
+    "inertiajs/inertia-laravel": "^1.0"
+  }
+}`)
+	writeTestFile(t, filepath.Join(appRoot, "composer.lock"), `{
+  "packages": [
+    {"name": "laravel/framework", "version": "v11.8.0"},
+    {"name": "laravel/fortify", "version": "v1.21.0"},
+    {"name": "inertiajs/inertia-laravel", "version": "v1.0.0"}
+  ]
+}`)
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) {
+		return "", errors.New("missing")
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: appRoot,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	app := snapshot.Apps[0]
+	if got := packageVersion(app.Packages, "laravel/fortify"); got != "v1.21.0" {
+		t.Fatalf("expected fortify package version, got %q", got)
+	}
+	if got := packageVersion(app.Packages, "inertiajs/inertia-laravel"); got != "v1.0.0" {
+		t.Fatalf("expected inertia package version, got %q", got)
+	}
+}
+
+func TestSnapshotServiceCollectsReleaseLayoutMetadata(t *testing.T) {
+	t.Parallel()
+
+	deployRoot := t.TempDir()
+	currentPath := filepath.Join(deployRoot, "current")
+	currentReleasePath := filepath.Join(deployRoot, "releases", "20260312")
+	previousReleasePath := filepath.Join(deployRoot, "releases", "20260310")
+	sharedPath := filepath.Join(deployRoot, "shared")
+
+	createLaravelTestApp(t, currentReleasePath, false)
+	createLaravelTestApp(t, previousReleasePath, false)
+	if err := os.MkdirAll(sharedPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(shared) error = %v", err)
+	}
+	if err := os.Symlink(currentReleasePath, currentPath); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) { return "", errors.New("missing") }
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: currentPath,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	if len(snapshot.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %+v", snapshot.Apps)
+	}
+
+	deployment := snapshot.Apps[0].Deployment
+	expectedReleaseRoot, err := filepath.EvalSymlinks(filepath.Join(deployRoot, "releases"))
+	if err != nil {
+		t.Fatalf("EvalSymlinks(releases) error = %v", err)
+	}
+	expectedSharedPath, err := filepath.EvalSymlinks(sharedPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(shared) error = %v", err)
+	}
+
+	if !deployment.UsesReleaseLayout || deployment.ReleaseRoot != expectedReleaseRoot || deployment.SharedPath != expectedSharedPath || len(deployment.PreviousReleases) != 1 {
+		t.Fatalf("unexpected deployment metadata: %+v", deployment)
 	}
 }
 

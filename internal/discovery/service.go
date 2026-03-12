@@ -19,11 +19,14 @@ const (
 var knownToolNames = []string{
 	"cat",
 	"crontab",
+	"firewall-cmd",
 	"find",
 	"hostname",
 	"ip",
+	"iptables",
 	"ls",
 	"nginx",
+	"nft",
 	"php-fpm",
 	"php-fpm8.0",
 	"php-fpm8.1",
@@ -38,6 +41,7 @@ var knownToolNames = []string{
 	"systemctl",
 	"tail",
 	"uname",
+	"ufw",
 	"whoami",
 }
 
@@ -46,17 +50,30 @@ type Service interface {
 }
 
 type SnapshotService struct {
-	lookPath       func(string) (string, error)
-	readFile       func(string) ([]byte, error)
-	statPath       func(string) (fs.FileInfo, error)
-	lstatPath      func(string) (fs.FileInfo, error)
-	globPaths      func(string) ([]string, error)
-	walkDirectory  func(string, fs.WalkDirFunc) error
-	resolveLinks   func(string) (string, error)
-	nginxPatterns  []string
-	phpFPMPatterns []string
-	discoverNginx  bool
-	discoverPHPFPM bool
+	lookPath           func(string) (string, error)
+	readFile           func(string) ([]byte, error)
+	statPath           func(string) (fs.FileInfo, error)
+	lstatPath          func(string) (fs.FileInfo, error)
+	globPaths          func(string) ([]string, error)
+	walkDirectory      func(string, fs.WalkDirFunc) error
+	resolveLinks       func(string) (string, error)
+	runCommand         func(context.Context, model.CommandRequest) (model.CommandResult, error)
+	nginxPatterns      []string
+	phpFPMPatterns     []string
+	supervisorPatterns []string
+	systemdPatterns    []string
+	cronPatterns       []string
+	sshPatterns        []string
+	sudoersPatterns    []string
+	discoverNginx      bool
+	discoverPHPFPM     bool
+	discoverSupervisor bool
+	discoverSystemd    bool
+	discoverCron       bool
+	discoverListeners  bool
+	discoverSSH        bool
+	discoverSudo       bool
+	discoverFirewall   bool
 }
 
 func NewService() SnapshotService {
@@ -68,6 +85,9 @@ func NewService() SnapshotService {
 		globPaths:     filepath.Glob,
 		walkDirectory: filepath.WalkDir,
 		resolveLinks:  filepath.EvalSymlinks,
+		runCommand: func(context.Context, model.CommandRequest) (model.CommandResult, error) {
+			return model.CommandResult{}, fs.ErrPermission
+		},
 		nginxPatterns: []string{
 			"/etc/nginx/nginx.conf",
 			"/etc/nginx/conf.d/*.conf",
@@ -81,8 +101,41 @@ func NewService() SnapshotService {
 			"/etc/php-fpm.d/*.conf",
 			"/usr/local/etc/php-fpm.d/*.conf",
 		},
-		discoverNginx:  true,
-		discoverPHPFPM: true,
+		supervisorPatterns: []string{
+			"/etc/supervisor/supervisord.conf",
+			"/etc/supervisor/conf.d/*.conf",
+			"/etc/supervisord.conf",
+			"/etc/supervisord.d/*.ini",
+		},
+		systemdPatterns: []string{
+			"/etc/systemd/system/*.service",
+			"/usr/lib/systemd/system/*.service",
+			"/lib/systemd/system/*.service",
+		},
+		cronPatterns: []string{
+			"/etc/crontab",
+			"/etc/cron.d/*",
+			"/etc/cron.daily/*",
+			"/var/spool/cron/*",
+			"/var/spool/cron/crontabs/*",
+		},
+		sshPatterns: []string{
+			"/etc/ssh/sshd_config",
+			"/etc/ssh/sshd_config.d/*.conf",
+		},
+		sudoersPatterns: []string{
+			"/etc/sudoers",
+			"/etc/sudoers.d/*",
+		},
+		discoverNginx:      true,
+		discoverPHPFPM:     true,
+		discoverSupervisor: true,
+		discoverSystemd:    true,
+		discoverCron:       true,
+		discoverListeners:  true,
+		discoverSSH:        true,
+		discoverSudo:       true,
+		discoverFirewall:   true,
 	}
 }
 
@@ -90,8 +143,12 @@ func NewServiceForAudit(config model.AuditConfig) SnapshotService {
 	service := NewService()
 	service.nginxPatterns = config.NormalizedNginxConfigPatterns()
 	service.phpFPMPatterns = config.NormalizedPHPFPMPoolPatterns()
+	service.supervisorPatterns = config.NormalizedSupervisorConfigPatterns()
+	service.systemdPatterns = config.NormalizedSystemdUnitPatterns()
 	service.discoverNginx = config.ShouldDiscoverNginx()
 	service.discoverPHPFPM = config.ShouldDiscoverPHPFPM()
+	service.discoverSupervisor = config.ShouldDiscoverSupervisor()
+	service.discoverSystemd = config.ShouldDiscoverSystemd()
 
 	return service
 }
@@ -111,6 +168,9 @@ func (service SnapshotService) Discover(ctx context.Context, execution model.Exe
 		Tools: service.discoverToolAvailability(),
 		Apps:  []model.LaravelApp{},
 	}
+	if execution.Commands != nil {
+		service.runCommand = execution.Commands.Run
+	}
 	unknowns := []model.Unknown{}
 
 	if execution.Config.ShouldDiscoverApplications() {
@@ -119,7 +179,7 @@ func (service SnapshotService) Discover(ctx context.Context, execution model.Exe
 		unknowns = append(unknowns, discoveryUnknowns...)
 	}
 
-	service.appendServiceConfigs(&snapshot, &unknowns)
+	service.appendServiceConfigs(ctx, execution.Config, &snapshot, &unknowns)
 
 	return snapshot, unknowns, nil
 }
@@ -135,7 +195,7 @@ func (service SnapshotService) discoverToolAvailability() model.ToolAvailability
 	return tools
 }
 
-func (service SnapshotService) appendServiceConfigs(snapshot *model.Snapshot, unknowns *[]model.Unknown) {
+func (service SnapshotService) appendServiceConfigs(ctx context.Context, config model.AuditConfig, snapshot *model.Snapshot, unknowns *[]model.Unknown) {
 	nginxSites := []model.NginxSite{}
 	nginxUnknowns := []model.Unknown{}
 	if service.discoverNginx {
@@ -148,10 +208,69 @@ func (service SnapshotService) appendServiceConfigs(snapshot *model.Snapshot, un
 		phpFPMPools, phpFPMUnknowns = service.discoverPHPFPMPools()
 	}
 
+	supervisorPrograms := []model.SupervisorProgram{}
+	supervisorHTTPServers := []model.SupervisorHTTPServer{}
+	supervisorUnknowns := []model.Unknown{}
+	if service.discoverSupervisor {
+		supervisorPrograms, supervisorHTTPServers, supervisorUnknowns = service.discoverSupervisorConfigs()
+	}
+
+	systemdUnits := []model.SystemdUnit{}
+	systemdUnknowns := []model.Unknown{}
+	if service.discoverSystemd {
+		systemdUnits, systemdUnknowns = service.discoverSystemdUnits()
+	}
+
+	cronEntries := []model.CronEntry{}
+	cronUnknowns := []model.Unknown{}
+	if service.discoverCron {
+		cronEntries, cronUnknowns = service.discoverCronEntries()
+	}
+
+	listeners := []model.ListenerRecord{}
+	listenerUnknowns := []model.Unknown{}
+	shouldDiscoverListeners := service.discoverListeners && (config.Scope == model.ScanScopeHost || (config.Scope != model.ScanScopeApp && len(snapshot.Apps) > 0))
+	if shouldDiscoverListeners {
+		listeners, listenerUnknowns = service.discoverListenersFromCommand(ctx)
+	}
+
+	sshConfigs := []model.SSHConfig{}
+	sshUnknowns := []model.Unknown{}
+	if service.discoverSSH && config.Scope == model.ScanScopeHost {
+		sshConfigs, sshUnknowns = service.discoverSSHConfigs()
+	}
+
+	sudoRules := []model.SudoRule{}
+	sudoUnknowns := []model.Unknown{}
+	if service.discoverSudo && config.Scope == model.ScanScopeHost {
+		sudoRules, sudoUnknowns = service.discoverSudoRules()
+	}
+
+	firewallSummaries := []model.FirewallSummary{}
+	firewallUnknowns := []model.Unknown{}
+	if service.discoverFirewall && config.Scope == model.ScanScopeHost {
+		firewallSummaries, firewallUnknowns = service.discoverFirewallSummaries(ctx)
+	}
+
 	snapshot.NginxSites = nginxSites
 	snapshot.PHPFPMPools = phpFPMPools
+	snapshot.SupervisorPrograms = supervisorPrograms
+	snapshot.SupervisorHTTPServers = supervisorHTTPServers
+	snapshot.SystemdUnits = systemdUnits
+	snapshot.CronEntries = cronEntries
+	snapshot.Listeners = listeners
+	snapshot.SSHConfigs = sshConfigs
+	snapshot.SudoRules = sudoRules
+	snapshot.FirewallSummaries = firewallSummaries
 	*unknowns = append(*unknowns, nginxUnknowns...)
 	*unknowns = append(*unknowns, phpFPMUnknowns...)
+	*unknowns = append(*unknowns, supervisorUnknowns...)
+	*unknowns = append(*unknowns, systemdUnknowns...)
+	*unknowns = append(*unknowns, cronUnknowns...)
+	*unknowns = append(*unknowns, listenerUnknowns...)
+	*unknowns = append(*unknowns, sshUnknowns...)
+	*unknowns = append(*unknowns, sudoUnknowns...)
+	*unknowns = append(*unknowns, firewallUnknowns...)
 }
 
 func (service SnapshotService) discoverLaravelApplications(ctx context.Context, config model.AuditConfig) ([]model.LaravelApp, []model.Unknown) {

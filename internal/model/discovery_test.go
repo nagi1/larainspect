@@ -124,6 +124,69 @@ func TestCoreLaravelPathExpectationsAndSortHelpers(t *testing.T) {
 	if pools[0].ConfigPath != "a.conf" {
 		t.Fatalf("SortPHPFPMPools() did not sort as expected: %+v", pools)
 	}
+
+	supervisorPrograms := []model.SupervisorProgram{
+		{ConfigPath: "b.conf", Name: "b"},
+		{ConfigPath: "a.conf", Name: "a"},
+	}
+	model.SortSupervisorPrograms(supervisorPrograms)
+	if supervisorPrograms[0].ConfigPath != "a.conf" {
+		t.Fatalf("SortSupervisorPrograms() did not sort as expected: %+v", supervisorPrograms)
+	}
+
+	supervisorHTTPServers := []model.SupervisorHTTPServer{
+		{ConfigPath: "b.conf", Bind: "b"},
+		{ConfigPath: "a.conf", Bind: "a"},
+	}
+	model.SortSupervisorHTTPServers(supervisorHTTPServers)
+	if supervisorHTTPServers[0].ConfigPath != "a.conf" {
+		t.Fatalf("SortSupervisorHTTPServers() did not sort as expected: %+v", supervisorHTTPServers)
+	}
+
+	systemdUnits := []model.SystemdUnit{
+		{Path: "b.service", Name: "b"},
+		{Path: "a.service", Name: "a"},
+	}
+	model.SortSystemdUnits(systemdUnits)
+	if systemdUnits[0].Path != "a.service" {
+		t.Fatalf("SortSystemdUnits() did not sort as expected: %+v", systemdUnits)
+	}
+
+	cronEntries := []model.CronEntry{
+		{SourcePath: "b", Schedule: "z", Command: "b"},
+		{SourcePath: "a", Schedule: "a", Command: "a"},
+	}
+	model.SortCronEntries(cronEntries)
+	if cronEntries[0].SourcePath != "a" {
+		t.Fatalf("SortCronEntries() did not sort as expected: %+v", cronEntries)
+	}
+
+	listenerRecords := []model.ListenerRecord{
+		{Protocol: "tcp", LocalAddress: "b", LocalPort: "81"},
+		{Protocol: "tcp", LocalAddress: "a", LocalPort: "80"},
+	}
+	model.SortListenerRecords(listenerRecords)
+	if listenerRecords[0].LocalAddress != "a" {
+		t.Fatalf("SortListenerRecords() did not sort as expected: %+v", listenerRecords)
+	}
+
+	sshConfigs := []model.SSHConfig{{Path: "b"}, {Path: "a"}}
+	model.SortSSHConfigs(sshConfigs)
+	if sshConfigs[0].Path != "a" {
+		t.Fatalf("SortSSHConfigs() did not sort as expected: %+v", sshConfigs)
+	}
+
+	sudoRules := []model.SudoRule{{Path: "b", Principal: "b"}, {Path: "a", Principal: "a"}}
+	model.SortSudoRules(sudoRules)
+	if sudoRules[0].Path != "a" {
+		t.Fatalf("SortSudoRules() did not sort as expected: %+v", sudoRules)
+	}
+
+	firewallSummaries := []model.FirewallSummary{{Source: "ufw"}, {Source: "firewalld"}}
+	model.SortFirewallSummaries(firewallSummaries)
+	if firewallSummaries[0].Source != "firewalld" {
+		t.Fatalf("SortFirewallSummaries() did not sort as expected: %+v", firewallSummaries)
+	}
 }
 
 func TestLaravelAppPathRecordLookup(t *testing.T) {

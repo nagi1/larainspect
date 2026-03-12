@@ -13,7 +13,7 @@ func TestDefaultAuditConfigUsesSafeProfileDefaults(t *testing.T) {
 	if config.Profile.Paths.UseDefaultPatterns != true {
 		t.Fatal("expected default profile to use built-in patterns")
 	}
-	if !config.ShouldDiscoverNginx() || !config.ShouldDiscoverPHPFPM() {
+	if !config.ShouldDiscoverNginx() || !config.ShouldDiscoverPHPFPM() || !config.ShouldDiscoverSupervisor() || !config.ShouldDiscoverSystemd() {
 		t.Fatalf("expected default service discovery switches, got %+v", config.Profile.Switches)
 	}
 }

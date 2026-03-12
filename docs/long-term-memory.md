@@ -40,6 +40,11 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Repeated failure-to-unknown mapping and repeated terminal-only rendering branches should be extracted into helpers early instead of duplicated across execution paths
 - Favor descriptive helper names and early returns when adding new CLI or runner behavior; do not let one function accumulate parsing, validation, execution, and rendering concerns at once
 - Task-3 foundation starts from normalized per-app path metadata, limited environment indicators, and bounded artifact scans collected during discovery; direct checks should consume that snapshot data instead of reading files ad hoc
+- Task-5 operational checks should consume normalized Supervisor, systemd, cron, and listener snapshot records rather than reparsing raw config or command output inside checks
+- Task-5 forensic indicators must stay high-signal: expected Laravel cache artifacts such as `bootstrap/cache/config.php` and compiled view files are not compromise indicators by themselves
+- Task-5 host-only collectors such as SSH, sudo, and firewall inspection must stay scope-gated to `host` scans; app and auto scans should not inherit host-level unknowns or noise when no host audit was requested
+- Task-5 network exposure checks currently define "broad" binds narrowly as wildcard listener addresses such as `0.0.0.0`, `::`, or `*`; private RFC1918 binds are not treated as broadly exposed by default without stronger evidence
+- Timeout classification in discovery must use `errors.Is(err, context.DeadlineExceeded)` instead of string matching alone so wrapped command timeouts stay stable across Go and OS variations
 - Hardened Laravel fixtures must use realistic secure defaults: valid `APP_KEY` format, non-world-readable `.env`, and non-world-readable `bootstrap/cache/config.php`, or the tests will accidentally normalize insecure deployments
 - Discovery tests must isolate host-specific Nginx and PHP-FPM search patterns so OSS CI stays deterministic and does not inherit the local machine's service config state
 - Temporary-path fixtures should resolve symlinks before asserting ambiguous-root behavior, because macOS temp directories may route through `/private` and create false-positive path-indirection findings

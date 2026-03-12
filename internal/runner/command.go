@@ -90,6 +90,11 @@ func DefaultAllowlist() *Allowlist {
 		{Name: "ls", AllowedFlags: map[string]struct{}{"-1": {}, "-A": {}, "-a": {}, "-al": {}, "-d": {}, "-l": {}, "-la": {}, "-n": {}}, AllowPaths: true},
 		{Name: "stat", AllowedFlags: map[string]struct{}{"-L": {}, "-c": {}, "-f": {}}, AllowPaths: true, AllowValues: true},
 		{Name: "find", AllowedFlags: map[string]struct{}{"-group": {}, "-maxdepth": {}, "-mindepth": {}, "-mmin": {}, "-mtime": {}, "-name": {}, "-path": {}, "-perm": {}, "-print": {}, "-printf": {}, "-type": {}, "-user": {}}, AllowPaths: true, AllowValues: true},
+		{Name: "ss", AllowedFlags: map[string]struct{}{"-H": {}, "-l": {}, "-n": {}, "-p": {}, "-t": {}, "-u": {}}, MaxArgs: 6},
+		{Name: "ufw", AllowValues: true, MaxArgs: 1},
+		{Name: "firewall-cmd", AllowedPrefixes: []string{"--state", "--list-all"}, MaxArgs: 1},
+		{Name: "nft", AllowValues: true, MaxArgs: 2},
+		{Name: "iptables", AllowedFlags: map[string]struct{}{"-S": {}}, MaxArgs: 1},
 	})
 }
 

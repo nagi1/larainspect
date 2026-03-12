@@ -66,3 +66,38 @@ func TestBuildReportGroupsFindingsByClass(t *testing.T) {
 		t.Fatalf("expected one unknown, got summary=%d len=%d", report.Summary.Unknowns, len(report.Unknowns))
 	}
 }
+
+func TestBuildReportCountsCompromiseIndicatorsAndRejectsInvalidFinding(t *testing.T) {
+	t.Parallel()
+
+	report, err := model.BuildReport(model.Host{}, time.Unix(1700000000, 0), time.Second, []model.Finding{
+		{
+			ID:          "forensics.sample",
+			CheckID:     "forensics.sample",
+			Class:       model.FindingClassCompromiseIndicator,
+			Severity:    model.SeverityHigh,
+			Confidence:  model.ConfidenceProbable,
+			Title:       "Unexpected PHP file",
+			Why:         "Could indicate persistence.",
+			Remediation: "Investigate and remove if unauthorized.",
+			Evidence:    []model.Evidence{{Label: "path", Detail: "/tmp/shell.php"}},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("BuildReport() error = %v", err)
+	}
+
+	if report.Summary.CompromiseIndicators != 1 || len(report.CompromiseIndicators) != 1 {
+		t.Fatalf("expected one compromise indicator, got %+v", report.Summary)
+	}
+
+	_, err = model.BuildReport(model.Host{}, time.Unix(1700000000, 0), time.Second, []model.Finding{{
+		ID:       "bad",
+		CheckID:  "bad",
+		Class:    model.FindingClassDirect,
+		Severity: model.SeverityHigh,
+	}}, nil)
+	if err == nil {
+		t.Fatal("expected invalid finding error")
+	}
+}

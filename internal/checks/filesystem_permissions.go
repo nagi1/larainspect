@@ -2,6 +2,8 @@ package checks
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"github.com/nagi1/larainspect/internal/model"
 )
@@ -116,6 +118,9 @@ func buildSymlinkedEnvironmentFinding(app model.LaravelApp) (model.Finding, bool
 	if !found || !envPath.Inspected || !envPath.Exists || !envPath.IsSymlink() {
 		return model.Finding{}, false
 	}
+	if symlinkedEnvironmentPathLooksExpected(app, envPath) {
+		return model.Finding{}, false
+	}
 
 	evidence := pathEvidence(envPath)
 	if envPath.ResolvedPath == "" {
@@ -125,10 +130,10 @@ func buildSymlinkedEnvironmentFinding(app model.LaravelApp) (model.Finding, bool
 	return model.Finding{
 		ID:          buildFindingID(filesystemPermissionsCheckID, "symlinked_env", envPath.AbsolutePath),
 		CheckID:     filesystemPermissionsCheckID,
-		Class:       model.FindingClassDirect,
+		Class:       model.FindingClassHeuristic,
 		Severity:    model.SeverityMedium,
-		Confidence:  model.ConfidenceConfirmed,
-		Title:       ".env is a symlink",
+		Confidence:  model.ConfidenceProbable,
+		Title:       ".env symlink points outside the expected app deployment boundary",
 		Why:         "Symlinked environment files are easy to mispoint during deploys and can hide secret exposure outside the expected application boundary.",
 		Remediation: "Prefer a directly managed .env file at the app root, or document and tightly control the symlink target and its permissions.",
 		Evidence:    evidence,
@@ -136,4 +141,23 @@ func buildSymlinkedEnvironmentFinding(app model.LaravelApp) (model.Finding, bool
 			pathTarget(envPath),
 		},
 	}, true
+}
+
+func symlinkedEnvironmentPathLooksExpected(app model.LaravelApp, envPath model.PathRecord) bool {
+	if envPath.ResolvedPath == "" {
+		return false
+	}
+
+	for _, appRoot := range appCanonicalRoots(app) {
+		if strings.HasPrefix(envPath.ResolvedPath, appRoot+string(filepath.Separator)) {
+			return true
+		}
+	}
+
+	if app.Deployment.UsesReleaseLayout && app.Deployment.SharedPath != "" {
+		sharedPathPrefix := filepath.Clean(app.Deployment.SharedPath) + string(filepath.Separator)
+		return strings.HasPrefix(filepath.Clean(envPath.ResolvedPath), sharedPathPrefix)
+	}
+
+	return false
 }
