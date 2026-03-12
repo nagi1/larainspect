@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 var requiredLaravelMarkerFiles = []string{
@@ -120,7 +120,7 @@ func (service SnapshotService) discoverCandidateRootsFromScanRoot(ctx context.Co
 	return candidateRoots, unknowns
 }
 
-func (service SnapshotService) inspectLaravelApplication(rootPath string) (model.LaravelApp, []model.Unknown, bool) {
+func (service SnapshotService) inspectLaravelApplication(ctx context.Context, rootPath string) (model.LaravelApp, []model.Unknown, bool) {
 	unknowns := []model.Unknown{}
 
 	rootInformation, err := service.statPath(rootPath)
@@ -199,6 +199,12 @@ func (service SnapshotService) inspectLaravelApplication(rootPath string) (model
 	}
 
 	model.SortPackageRecords(app.Packages)
+
+	keyPaths, environment, artifacts, metadataUnknowns := service.collectApplicationMetadata(ctx, rootPath)
+	app.KeyPaths = keyPaths
+	app.Environment = environment
+	app.Artifacts = artifacts
+	unknowns = append(unknowns, metadataUnknowns...)
 
 	return app, unknowns, true
 }

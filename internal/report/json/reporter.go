@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/nagi/larainspect/internal/model"
-	"github.com/nagi/larainspect/internal/report/schema"
+	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/report/schema"
 )
 
 type Reporter struct{}

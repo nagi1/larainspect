@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
-	"github.com/nagi/larainspect/internal/runner"
+	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/runner"
 )
 
 func TestCommandRunnerRejectsUnknownCommands(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestReporterFormat(t *testing.T) {

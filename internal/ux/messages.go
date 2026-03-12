@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func Onboarding(config model.AuditConfig) string {

@@ -124,6 +124,9 @@ func (config AuditConfig) Validate() error {
 	if !config.ColorMode.Valid() {
 		return fmt.Errorf("color mode %q is invalid", config.ColorMode)
 	}
+	if !IsSupportedOSFamily(config.Profile.OSFamily) {
+		return fmt.Errorf("os family %q is invalid", config.Profile.OSFamily)
+	}
 
 	return nil
 }

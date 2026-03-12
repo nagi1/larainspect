@@ -182,9 +182,11 @@ type Host struct {
 type ToolAvailability map[string]bool
 
 type Snapshot struct {
-	Host  Host             `json:"host"`
-	Tools ToolAvailability `json:"tools,omitempty"`
-	Apps  []LaravelApp     `json:"apps,omitempty"`
+	Host        Host             `json:"host"`
+	Tools       ToolAvailability `json:"tools,omitempty"`
+	Apps        []LaravelApp     `json:"apps,omitempty"`
+	NginxSites  []NginxSite      `json:"nginx_sites,omitempty"`
+	PHPFPMPools []PHPFPMPool     `json:"php_fpm_pools,omitempty"`
 }
 
 type Report struct {
@@ -263,6 +265,7 @@ type AuditConfig struct {
 	CommandTimeout time.Duration
 	MaxOutputBytes int
 	WorkerLimit    int
+	ConfigPath     string
 	Verbosity      Verbosity
 	Scope          ScanScope
 	Interactive    bool
@@ -270,6 +273,7 @@ type AuditConfig struct {
 	ScanRoots      []string
 	ColorMode      ColorMode
 	ScreenReader   bool
+	Profile        HostProfile
 }
 
 type CommandRequest struct {

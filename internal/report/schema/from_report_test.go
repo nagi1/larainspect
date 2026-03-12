@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
-	"github.com/nagi/larainspect/internal/report/schema"
+	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/report/schema"
 )
 
 func TestFromReportReturnsDocument(t *testing.T) {

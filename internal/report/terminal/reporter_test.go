@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/report/terminal"
-	"github.com/nagi/larainspect/internal/testfixtures"
+	"github.com/nagi1/larainspect/internal/report/terminal"
+	"github.com/nagi1/larainspect/internal/testfixtures"
 )
 
 func TestReporterMatchesGoldenFile(t *testing.T) {

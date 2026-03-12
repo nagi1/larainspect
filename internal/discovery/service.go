@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 const (
@@ -46,11 +46,17 @@ type Service interface {
 }
 
 type SnapshotService struct {
-	lookPath      func(string) (string, error)
-	readFile      func(string) ([]byte, error)
-	statPath      func(string) (fs.FileInfo, error)
-	walkDirectory func(string, fs.WalkDirFunc) error
-	resolveLinks  func(string) (string, error)
+	lookPath       func(string) (string, error)
+	readFile       func(string) ([]byte, error)
+	statPath       func(string) (fs.FileInfo, error)
+	lstatPath      func(string) (fs.FileInfo, error)
+	globPaths      func(string) ([]string, error)
+	walkDirectory  func(string, fs.WalkDirFunc) error
+	resolveLinks   func(string) (string, error)
+	nginxPatterns  []string
+	phpFPMPatterns []string
+	discoverNginx  bool
+	discoverPHPFPM bool
 }
 
 func NewService() SnapshotService {
@@ -58,9 +64,36 @@ func NewService() SnapshotService {
 		lookPath:      exec.LookPath,
 		readFile:      os.ReadFile,
 		statPath:      os.Stat,
+		lstatPath:     os.Lstat,
+		globPaths:     filepath.Glob,
 		walkDirectory: filepath.WalkDir,
 		resolveLinks:  filepath.EvalSymlinks,
+		nginxPatterns: []string{
+			"/etc/nginx/nginx.conf",
+			"/etc/nginx/conf.d/*.conf",
+			"/etc/nginx/sites-enabled/*",
+			"/usr/local/etc/nginx/nginx.conf",
+			"/usr/local/etc/nginx/conf.d/*.conf",
+			"/usr/local/etc/nginx/servers/*",
+		},
+		phpFPMPatterns: []string{
+			"/etc/php/*/fpm/pool.d/*.conf",
+			"/etc/php-fpm.d/*.conf",
+			"/usr/local/etc/php-fpm.d/*.conf",
+		},
+		discoverNginx:  true,
+		discoverPHPFPM: true,
 	}
+}
+
+func NewServiceForAudit(config model.AuditConfig) SnapshotService {
+	service := NewService()
+	service.nginxPatterns = config.NormalizedNginxConfigPatterns()
+	service.phpFPMPatterns = config.NormalizedPHPFPMPoolPatterns()
+	service.discoverNginx = config.ShouldDiscoverNginx()
+	service.discoverPHPFPM = config.ShouldDiscoverPHPFPM()
+
+	return service
 }
 
 type NoopService struct{}
@@ -80,13 +113,13 @@ func (service SnapshotService) Discover(ctx context.Context, execution model.Exe
 	}
 	unknowns := []model.Unknown{}
 
-	if !execution.Config.ShouldDiscoverApplications() {
-		return snapshot, unknowns, nil
+	if execution.Config.ShouldDiscoverApplications() {
+		discoveredApps, discoveryUnknowns := service.discoverLaravelApplications(ctx, execution.Config)
+		snapshot.Apps = discoveredApps
+		unknowns = append(unknowns, discoveryUnknowns...)
 	}
 
-	discoveredApps, discoveryUnknowns := service.discoverLaravelApplications(ctx, execution.Config)
-	snapshot.Apps = discoveredApps
-	unknowns = append(unknowns, discoveryUnknowns...)
+	service.appendServiceConfigs(&snapshot, &unknowns)
 
 	return snapshot, unknowns, nil
 }
@@ -102,6 +135,25 @@ func (service SnapshotService) discoverToolAvailability() model.ToolAvailability
 	return tools
 }
 
+func (service SnapshotService) appendServiceConfigs(snapshot *model.Snapshot, unknowns *[]model.Unknown) {
+	nginxSites := []model.NginxSite{}
+	nginxUnknowns := []model.Unknown{}
+	if service.discoverNginx {
+		nginxSites, nginxUnknowns = service.discoverNginxSites()
+	}
+
+	phpFPMPools := []model.PHPFPMPool{}
+	phpFPMUnknowns := []model.Unknown{}
+	if service.discoverPHPFPM {
+		phpFPMPools, phpFPMUnknowns = service.discoverPHPFPMPools()
+	}
+
+	snapshot.NginxSites = nginxSites
+	snapshot.PHPFPMPools = phpFPMPools
+	*unknowns = append(*unknowns, nginxUnknowns...)
+	*unknowns = append(*unknowns, phpFPMUnknowns...)
+}
+
 func (service SnapshotService) discoverLaravelApplications(ctx context.Context, config model.AuditConfig) ([]model.LaravelApp, []model.Unknown) {
 	discoveredApps := []model.LaravelApp{}
 	unknowns := []model.Unknown{}
@@ -111,7 +163,7 @@ func (service SnapshotService) discoverLaravelApplications(ctx context.Context, 
 		service.appendRequestedApplication(ctx, &discoveredApps, &unknowns, seenRoots, explicitAppPath)
 	}
 
-	for _, scanRoot := range config.NormalizedScanRoots() {
+	for _, scanRoot := range config.EffectiveScanRoots() {
 		candidateRoots, scanUnknowns := service.discoverCandidateRootsFromScanRoot(ctx, scanRoot)
 		unknowns = append(unknowns, scanUnknowns...)
 
@@ -187,7 +239,7 @@ func (service SnapshotService) inspectAndTrackApplication(
 
 	seenRoots[cleanRoot] = struct{}{}
 
-	app, appUnknowns, isLaravelApp := service.inspectLaravelApplication(cleanRoot)
+	app, appUnknowns, isLaravelApp := service.inspectLaravelApplication(ctx, cleanRoot)
 	if !isLaravelApp {
 		return model.LaravelApp{}, appUnknowns, false, false
 	}

@@ -39,6 +39,14 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Output-format normalization and config validation should stay centralized in the model layer instead of being reimplemented ad hoc in CLI handlers
 - Repeated failure-to-unknown mapping and repeated terminal-only rendering branches should be extracted into helpers early instead of duplicated across execution paths
 - Favor descriptive helper names and early returns when adding new CLI or runner behavior; do not let one function accumulate parsing, validation, execution, and rendering concerns at once
+- Task-3 foundation starts from normalized per-app path metadata, limited environment indicators, and bounded artifact scans collected during discovery; direct checks should consume that snapshot data instead of reading files ad hoc
+- Hardened Laravel fixtures must use realistic secure defaults: valid `APP_KEY` format, non-world-readable `.env`, and non-world-readable `bootstrap/cache/config.php`, or the tests will accidentally normalize insecure deployments
+- Discovery tests must isolate host-specific Nginx and PHP-FPM search patterns so OSS CI stays deterministic and does not inherit the local machine's service config state
+- Temporary-path fixtures should resolve symlinks before asserting ambiguous-root behavior, because macOS temp directories may route through `/private` and create false-positive path-indirection findings
+- Task-3 checks should only mark findings as `confirmed` when the normalized snapshot contains direct path or config evidence; if config visibility is partial or depends on runtime cache state, prefer `probable`
+- Host and distro layout assumptions must stay configurable: discovery should read a small profile file for non-standard Nginx, PHP-FPM, Supervisor, systemd, and app-root paths instead of baking Ubuntu-style paths into checks or CLI flow
+- Operator config files must fail fast on unknown keys and unsupported distro identifiers; silent acceptance of typos is not acceptable for a security-focused CLI
+- Prefer operator-facing config names like `server`, `laravel`, and `services` over internal model terms; default examples should feel familiar to Laravel-on-Ubuntu users and only expose advanced knobs when needed
 
 ## Architecture Direction
 

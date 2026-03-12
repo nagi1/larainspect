@@ -3,7 +3,7 @@ package testfixtures
 import (
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func SampleReport() (model.Report, error) {

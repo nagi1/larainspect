@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/checks"
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/checks"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 type testCheck struct {

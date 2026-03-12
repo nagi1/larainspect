@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestSpecificationValidateBranches(t *testing.T) {

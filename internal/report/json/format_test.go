@@ -3,7 +3,7 @@ package json_test
 import (
 	"testing"
 
-	jsonreport "github.com/nagi/larainspect/internal/report/json"
+	jsonreport "github.com/nagi1/larainspect/internal/report/json"
 )
 
 func TestReporterFormat(t *testing.T) {

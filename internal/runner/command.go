@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 type Specification struct {

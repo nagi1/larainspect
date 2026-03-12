@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/report/schema"
+	"github.com/nagi1/larainspect/internal/report/schema"
 )
 
 func TestDraftIsValidJSON(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/nagi/larainspect/internal/cli"
+	"github.com/nagi1/larainspect/internal/cli"
 )
 
 func main() {

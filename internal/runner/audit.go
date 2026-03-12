@@ -7,10 +7,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/nagi/larainspect/internal/checks"
-	"github.com/nagi/larainspect/internal/correlators"
-	"github.com/nagi/larainspect/internal/discovery"
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/checks"
+	"github.com/nagi1/larainspect/internal/correlators"
+	"github.com/nagi1/larainspect/internal/discovery"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 type Auditor struct {

@@ -18,6 +18,7 @@ Usage:
 Quick start:
   larainspect audit
   larainspect audit --scope app --app-path /var/www/shop
+  larainspect audit --config /etc/larainspect/config.json
   larainspect audit --interactive
   larainspect audit --format json --verbosity quiet
 
@@ -46,6 +47,7 @@ Examples:
   larainspect audit
   larainspect audit --scope app --app-path /var/www/shop
   larainspect audit --scan-root /var/www --scan-root /srv/www
+  larainspect audit --config /etc/larainspect/config.json
   larainspect audit --interactive
   larainspect audit --format json --verbosity quiet
   larainspect audit --verbosity verbose --screen-reader
@@ -63,6 +65,7 @@ Accessibility:
   - JSON output remains clean on stdout for machine consumers
 
 Flags:
+  --config string            Path to an audit profile JSON file
   --format string            Output format: terminal or json (default "terminal")
   --verbosity string         Output detail: quiet, normal, or verbose (default "normal")
   --scope string             Scan scope: auto, host, or app (default "auto")
@@ -75,6 +78,10 @@ Flags:
   --command-timeout duration Timeout for one allowlisted command (default 2s)
   --max-output-bytes int     Maximum bytes captured per command stream (default 65536)
   --worker-limit int         Reserved worker cap for bounded concurrency
+
+Config files:
+  larainspect auto-loads larainspect.json, .larainspect.json, or
+  /etc/larainspect/config.json when present. Use --config to pick a specific file.
 
 Exit codes:
   0   clean audit with no findings or unknowns

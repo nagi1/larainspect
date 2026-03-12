@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "server": {
+    "name": "laravel-production",
+    "os": "ubuntu"
+  },
+  "laravel": {
+    "scope": "auto",
+    "app_path": "/var/www/laravel/current",
+    "scan_roots": [
+      "/var/www",
+      "/srv/www"
+    ]
+  },
+  "services": {
+    "use_default_paths": true,
+    "nginx": {
+      "enabled": true,
+      "paths": [
+        "/etc/nginx/sites-enabled/*"
+      ]
+    },
+    "php_fpm": {
+      "enabled": true,
+      "paths": [
+        "/etc/php/*/fpm/pool.d/*.conf"
+      ]
+    },
+    "supervisor": {
+      "enabled": true,
+      "paths": [
+        "/etc/supervisor/conf.d/*.conf"
+      ]
+    },
+    "systemd": {
+      "enabled": true,
+      "paths": [
+        "/etc/systemd/system/*.service"
+      ]
+    }
+  },
+  "output": {
+    "format": "terminal",
+    "verbosity": "normal",
+    "interactive": false,
+    "color": "auto",
+    "screen_reader": false
+  },
+  "advanced": {
+    "command_timeout": "2s",
+    "max_output_bytes": 65536,
+    "worker_limit": 4
+  }
+}

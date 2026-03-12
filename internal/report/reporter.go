@@ -3,7 +3,7 @@ package report
 import (
 	"io"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 type Reporter interface {

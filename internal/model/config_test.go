@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestVerbosityValid(t *testing.T) {
@@ -66,12 +66,27 @@ func TestAuditConfigValidate(t *testing.T) {
 		{Format: model.OutputFormatTerminal, Verbosity: model.Verbosity("bad"), Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto},
 		{Format: model.OutputFormatTerminal, Verbosity: model.VerbosityNormal, Scope: model.ScanScope("bad"), ColorMode: model.ColorModeAuto},
 		{Format: model.OutputFormatTerminal, Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorMode("bad")},
+		{Format: model.OutputFormatTerminal, Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto, Profile: model.HostProfile{OSFamily: "fedorra"}},
 	}
 
 	for _, config := range testCases {
 		if err := config.Validate(); err == nil {
 			t.Fatalf("expected validation error for config %+v", config)
 		}
+	}
+}
+
+func TestIsSupportedOSFamily(t *testing.T) {
+	t.Parallel()
+
+	for _, osFamily := range []string{"", "auto", "custom", "ubuntu", "debian", "fedora", "rhel", "centos", "rocky", "almalinux"} {
+		if !model.IsSupportedOSFamily(osFamily) {
+			t.Fatalf("expected %q to be supported", osFamily)
+		}
+	}
+
+	if model.IsSupportedOSFamily("freebsd") {
+		t.Fatal("expected unsupported os family to be rejected")
 	}
 }
 

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/cli"
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/cli"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestAppPrintsRootHelp(t *testing.T) {
@@ -230,7 +230,17 @@ func createLaravelAppFixture(t *testing.T) string {
 	t.Helper()
 
 	rootPath := t.TempDir()
-	for _, relativePath := range []string{"bootstrap", "public"} {
+	for _, relativePath := range []string{
+		"app",
+		"bootstrap/cache",
+		"config",
+		"database",
+		"public",
+		"resources",
+		"routes",
+		"storage",
+		"vendor",
+	} {
 		if err := os.MkdirAll(filepath.Join(rootPath, relativePath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) error = %v", relativePath, err)
 		}
@@ -238,10 +248,27 @@ func createLaravelAppFixture(t *testing.T) string {
 
 	writeFixtureFile(t, filepath.Join(rootPath, "artisan"), "#!/usr/bin/env php\n")
 	writeFixtureFile(t, filepath.Join(rootPath, "bootstrap/app.php"), "<?php return app();\n")
+	configCachePath := filepath.Join(rootPath, "bootstrap/cache/config.php")
+	writeFixtureFile(t, configCachePath, "<?php return ['app' => ['debug' => false]];\n")
+	if err := os.Chmod(configCachePath, 0o640); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", configCachePath, err)
+	}
+	writeFixtureFile(t, filepath.Join(rootPath, "config/app.php"), "<?php return ['name' => 'Demo'];\n")
 	writeFixtureFile(t, filepath.Join(rootPath, "public/index.php"), "<?php require __DIR__.'/../vendor/autoload.php';\n")
 	writeFixtureFile(t, filepath.Join(rootPath, "composer.json"), `{"name":"acme/shop","require":{"laravel/framework":"^11.0"}}`)
+	writeFixtureFile(t, filepath.Join(rootPath, "composer.lock"), `{"packages":[{"name":"laravel/framework","version":"v11.0.0"}]}`)
+	envPath := filepath.Join(rootPath, ".env")
+	writeFixtureFile(t, envPath, "APP_KEY=base64:dGVzdHRlc3R0ZXN0dGVzdA==\nAPP_DEBUG=false\n")
+	if err := os.Chmod(envPath, 0o640); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", envPath, err)
+	}
 
-	return rootPath
+	resolvedRootPath, err := filepath.EvalSymlinks(rootPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q) error = %v", rootPath, err)
+	}
+
+	return resolvedRootPath
 }
 
 func writeFixtureFile(t *testing.T, path string, contents string) {

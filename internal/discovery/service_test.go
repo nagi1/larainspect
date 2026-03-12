@@ -8,8 +8,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
+
+func newTestSnapshotService() SnapshotService {
+	service := NewService()
+	service.nginxPatterns = nil
+	service.phpFPMPatterns = nil
+	return service
+}
 
 func TestNoopServiceReturnsHostAndTools(t *testing.T) {
 	t.Parallel()
@@ -33,11 +40,40 @@ func TestNoopServiceReturnsHostAndTools(t *testing.T) {
 	}
 }
 
+func TestNewServiceForAuditUsesProfileDrivenDiscoverySettings(t *testing.T) {
+	t.Parallel()
+
+	config := model.DefaultAuditConfig()
+	config.Profile.OSFamily = "fedora"
+	config.Profile.Paths.UseDefaultPatterns = false
+	config.Profile.Paths.NginxConfigPatterns = []string{"/srv/nginx/*.conf"}
+	config.Profile.Paths.PHPFPMPoolPatterns = []string{"/srv/php-fpm/*.conf"}
+	config.Profile.Switches.DiscoverNginx = false
+
+	service := NewServiceForAudit(config)
+
+	if service.discoverNginx {
+		t.Fatal("expected nginx discovery to be disabled from profile switches")
+	}
+
+	if !service.discoverPHPFPM {
+		t.Fatal("expected php-fpm discovery to remain enabled")
+	}
+
+	if len(service.nginxPatterns) != 1 || service.nginxPatterns[0] != "/srv/nginx/*.conf" {
+		t.Fatalf("unexpected nginx patterns %+v", service.nginxPatterns)
+	}
+
+	if len(service.phpFPMPatterns) != 1 || service.phpFPMPatterns[0] != "/srv/php-fpm/*.conf" {
+		t.Fatalf("unexpected php-fpm patterns %+v", service.phpFPMPatterns)
+	}
+}
+
 func TestSnapshotServiceDiscoversToolsAndExplicitLaravelApp(t *testing.T) {
 	t.Parallel()
 
 	appRoot := createLaravelTestApp(t, t.TempDir(), true)
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		switch name {
 		case "hostname", "find", "php-fpm":
@@ -91,7 +127,7 @@ func TestSnapshotServiceDiscoversLaravelAppsFromScanRoots(t *testing.T) {
 	firstAppRoot := createLaravelTestApp(t, filepath.Join(scanRoot, "sites/shop"), false)
 	secondAppRoot := createLaravelTestApp(t, filepath.Join(scanRoot, "sites/blog/current"), false)
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -128,7 +164,7 @@ func TestSnapshotServiceSkipsApplicationDiscoveryForHostScope(t *testing.T) {
 	t.Parallel()
 
 	appRoot := createLaravelTestApp(t, t.TempDir(), false)
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -157,7 +193,7 @@ func TestSnapshotServiceNormalizesComposerPermissionFailuresIntoUnknowns(t *test
 	t.Parallel()
 
 	appRoot := createLaravelTestApp(t, t.TempDir(), true)
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -197,7 +233,7 @@ func TestSnapshotServiceNormalizesComposerPermissionFailuresIntoUnknowns(t *test
 func TestSnapshotServiceReportsUnknownForMissingRequestedAppPath(t *testing.T) {
 	t.Parallel()
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -232,7 +268,7 @@ func TestSnapshotServiceReportsUnknownForNonLaravelRequestedAppPath(t *testing.T
 	rootPath := t.TempDir()
 	writeTestFile(t, filepath.Join(rootPath, "README.md"), "not a laravel app\n")
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -266,7 +302,7 @@ func TestSnapshotServiceNormalizesComposerParseFailuresIntoUnknowns(t *testing.T
 	appRoot := createLaravelTestApp(t, t.TempDir(), true)
 	writeTestFile(t, filepath.Join(appRoot, "composer.json"), "{invalid json")
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -303,7 +339,7 @@ func TestSnapshotServiceSupportsInstalledPackagesArrayFormat(t *testing.T) {
   {"name": "laravel/horizon", "version": "v5.0.0"}
 ]`)
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -331,10 +367,64 @@ func TestSnapshotServiceSupportsInstalledPackagesArrayFormat(t *testing.T) {
 	}
 }
 
+func TestSnapshotServiceCollectsAppMetadataForCoreChecks(t *testing.T) {
+	t.Parallel()
+
+	appRoot := createLaravelTestApp(t, t.TempDir(), true)
+	writeTestFile(t, filepath.Join(appRoot, ".env"), "APP_KEY=base64:test-key\nAPP_DEBUG=true\n")
+	if err := os.MkdirAll(filepath.Join(appRoot, "public/uploads"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(public/uploads) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(appRoot, "public/.env.bak"), "APP_KEY=backup\n")
+	writeTestFile(t, filepath.Join(appRoot, "public/uploads/shell.php"), "<?php echo 'hi';\n")
+	writeTestFile(t, filepath.Join(appRoot, "public/dump.sql"), "-- sql dump\n")
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) {
+		return "", errors.New("missing")
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: appRoot,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	if len(snapshot.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %+v", snapshot.Apps)
+	}
+
+	app := snapshot.Apps[0]
+	envPath, found := app.PathRecord(".env")
+	if !found || !envPath.Inspected || !envPath.Exists {
+		t.Fatalf("expected inspected .env path, got %+v", envPath)
+	}
+
+	if !app.Environment.AppDebugDefined || app.Environment.AppDebugValue != "true" {
+		t.Fatalf("expected APP_DEBUG=true metadata, got %+v", app.Environment)
+	}
+
+	if !app.Environment.AppKeyDefined {
+		t.Fatalf("expected APP_KEY metadata, got %+v", app.Environment)
+	}
+
+	if len(app.Artifacts) < 3 {
+		t.Fatalf("expected artifact metadata, got %+v", app.Artifacts)
+	}
+}
+
 func TestSnapshotServiceNormalizesScanRootWalkFailuresIntoUnknowns(t *testing.T) {
 	t.Parallel()
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -364,7 +454,7 @@ func TestSnapshotServiceNormalizesScanRootWalkFailuresIntoUnknowns(t *testing.T)
 func TestSnapshotServiceStopsDiscoveryWhenContextIsCanceled(t *testing.T) {
 	t.Parallel()
 
-	service := NewService()
+	service := newTestSnapshotService()
 	service.lookPath = func(name string) (string, error) {
 		return "", errors.New("missing")
 	}
@@ -403,8 +493,14 @@ func createLaravelTestApp(t *testing.T, root string, includeInstalledPackages bo
 	t.Helper()
 
 	for _, relativePath := range []string{
-		"bootstrap",
+		"app",
+		"bootstrap/cache",
+		"config",
+		"database",
 		"public",
+		"resources",
+		"routes",
+		"storage",
 		"vendor/composer",
 	} {
 		if err := os.MkdirAll(filepath.Join(root, relativePath), 0o755); err != nil {
@@ -414,7 +510,18 @@ func createLaravelTestApp(t *testing.T, root string, includeInstalledPackages bo
 
 	writeTestFile(t, filepath.Join(root, "artisan"), "#!/usr/bin/env php\n")
 	writeTestFile(t, filepath.Join(root, "bootstrap/app.php"), "<?php return app();\n")
+	configCachePath := filepath.Join(root, "bootstrap/cache/config.php")
+	writeTestFile(t, configCachePath, "<?php return ['app' => ['debug' => false]];\n")
+	if err := os.Chmod(configCachePath, 0o640); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", configCachePath, err)
+	}
+	writeTestFile(t, filepath.Join(root, "config/app.php"), "<?php return ['name' => 'Demo'];\n")
 	writeTestFile(t, filepath.Join(root, "public/index.php"), "<?php require __DIR__.'/../vendor/autoload.php';\n")
+	envPath := filepath.Join(root, ".env")
+	writeTestFile(t, envPath, "APP_KEY=base64:dGVzdHRlc3R0ZXN0dGVzdA==\nAPP_DEBUG=false\n")
+	if err := os.Chmod(envPath, 0o640); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", envPath, err)
+	}
 	writeTestFile(t, filepath.Join(root, "composer.json"), `{
   "name": "acme/shop",
   "require": {

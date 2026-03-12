@@ -6,10 +6,12 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestWriteFlagError(t *testing.T) {
@@ -129,5 +131,81 @@ func TestParseAuditConfigSupportsNoColorShortcut(t *testing.T) {
 
 	if config.ColorMode != model.ColorModeNever {
 		t.Fatalf("expected --no-color to force never, got %q", config.ColorMode)
+	}
+}
+
+func TestParseAuditConfigLoadsExplicitConfigFileAndAppliesFlagOverrides(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, `{
+  "version": 1,
+  "output": {
+    "format": "json",
+    "verbosity": "quiet"
+  },
+  "server": {
+    "os": "fedora"
+  },
+  "advanced": {
+    "command_timeout": "7s"
+  }
+}`)
+
+	config, helpRequested, err := parseAuditConfig([]string{
+		"--config", configPath,
+		"--verbosity", "verbose",
+		"--scope", "host",
+	})
+	if err != nil {
+		t.Fatalf("parseAuditConfig() error = %v", err)
+	}
+
+	if helpRequested {
+		t.Fatal("expected helpRequested to be false")
+	}
+
+	if config.Format != model.OutputFormatJSON {
+		t.Fatalf("expected config file format to be loaded, got %q", config.Format)
+	}
+
+	if config.Verbosity != model.VerbosityVerbose || config.Scope != model.ScanScopeHost {
+		t.Fatalf("expected flag overrides to win, got %+v", config)
+	}
+
+	if config.NormalizedOSFamily() != "rhel" {
+		t.Fatalf("expected fedora profile normalization, got %q", config.NormalizedOSFamily())
+	}
+}
+
+func TestParseAuditConfigAutoLoadsDefaultConfigFile(t *testing.T) {
+	workingDirectory := t.TempDir()
+	writeConfigFileForTest(t, filepath.Join(workingDirectory, "larainspect.json"), `{
+  "version": 1,
+  "laravel": {
+    "scope": "host"
+  }
+}`)
+
+	originalWorkingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(workingDirectory); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWorkingDirectory)
+	})
+
+	config, helpRequested, err := parseAuditConfig(nil)
+	if err != nil {
+		t.Fatalf("parseAuditConfig() error = %v", err)
+	}
+	if helpRequested {
+		t.Fatal("expected helpRequested to be false")
+	}
+	if config.Scope != model.ScanScopeHost {
+		t.Fatalf("expected auto-loaded config scope, got %+v", config)
 	}
 }

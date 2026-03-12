@@ -3,7 +3,7 @@ package schema
 import (
 	_ "embed"
 
-	"github.com/nagi/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 //go:embed report.schema.json
