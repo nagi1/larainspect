@@ -36,6 +36,7 @@ This repository is intended to stay beginner-friendly, explicit, and easy to ext
 - Keep golden outputs in package `testdata/` directories.
 - Update golden files deliberately when a public output contract changes.
 - Avoid network access and mutable host assumptions in tests.
+- Keep the explicit machine-readable report draft in `internal/report/schema/report.schema.json` aligned with the Go report model.
 
 ## Package boundaries
 

@@ -28,6 +28,7 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Golden report tests live alongside reporter packages and shared deterministic fixtures live in `internal/testfixtures`
 - Foundation exit codes are severity-based: `0`, `2`, `10`, `20`, `30`, `40`, and `50`
 - JSON severity summaries keep all severity buckets present, including zero counts, for machine-readable stability
+- The explicit JSON schema draft lives in `internal/report/schema/report.schema.json` and is exposed by the schema package for tooling
 
 ## Architecture Direction
 

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://larainspect.dev/schema/report/v0alpha1",
+  "title": "larainspect report",
+  "description": "Machine-readable audit report for larainspect foundation schema v0alpha1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "duration",
+    "host",
+    "summary",
+    "direct_findings",
+    "heuristic_findings",
+    "compromise_indicators",
+    "unknowns"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "v0alpha1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration": {
+      "type": "string"
+    },
+    "host": {
+      "$ref": "#/$defs/host"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "direct_findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "heuristic_findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "compromise_indicators": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unknown"
+      }
+    }
+  },
+  "$defs": {
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hostname": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_findings",
+        "direct_findings",
+        "heuristic_findings",
+        "compromise_indicators",
+        "unknowns",
+        "severity_counts"
+      ],
+      "properties": {
+        "total_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direct_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heuristic_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "compromise_indicators": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknowns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "informational"
+          ],
+          "properties": {
+            "critical": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "high": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "low": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "informational": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "detail"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "check_id",
+        "class",
+        "severity",
+        "confidence",
+        "title",
+        "why",
+        "remediation",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "check_id": {
+          "type": "string"
+        },
+        "class": {
+          "enum": [
+            "direct_finding",
+            "heuristic_finding",
+            "possible_compromise_indicator"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "informational"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "probable",
+            "possible",
+            "not_enough_evidence"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "affected": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        }
+      }
+    },
+    "unknown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "check_id",
+        "title",
+        "reason",
+        "error_kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "check_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "error_kind": {
+          "enum": [
+            "permission_denied",
+            "command_rejected",
+            "command_failed",
+            "command_timeout",
+            "command_missing",
+            "parse_failure",
+            "not_enough_data"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "affected": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        }
+      }
+    }
+  }
+}

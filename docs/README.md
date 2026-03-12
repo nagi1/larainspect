@@ -11,6 +11,7 @@ Start here:
 - [Architecture](/Users/nagi/code/larainspect/docs/architecture.md)
 - [Security Checklist](/Users/nagi/code/larainspect/docs/security-checklist.md)
 - [Long-Term Memory](/Users/nagi/code/larainspect/docs/long-term-memory.md)
+- [Foundation Contracts](/Users/nagi/code/larainspect/docs/foundation-contracts.md)
 - [Task Breakdown](/Users/nagi/code/larainspect/docs/tasks/README.md)
 
 Working rules:

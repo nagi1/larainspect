@@ -39,4 +39,5 @@ go run ./cmd/larainspect audit --format json
 ## Repository guide
 
 - [Project docs](/Users/nagi/code/larainspect/docs/README.md)
+- [Foundation contracts](/Users/nagi/code/larainspect/docs/foundation-contracts.md)
 - [Contributor guide](/Users/nagi/code/larainspect/CONTRIBUTING.md)
