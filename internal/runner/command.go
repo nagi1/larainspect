@@ -29,26 +29,7 @@ func (specification Specification) Validate(args []string) error {
 	}
 
 	for _, arg := range args {
-		if _, ok := specification.AllowedFlags[arg]; ok {
-			continue
-		}
-
-		matchedPrefix := false
-		for _, prefix := range specification.AllowedPrefixes {
-			if strings.HasPrefix(arg, prefix) {
-				matchedPrefix = true
-				break
-			}
-		}
-		if matchedPrefix {
-			continue
-		}
-
-		if specification.AllowPaths && isPathArgument(arg) {
-			continue
-		}
-
-		if specification.AllowValues && !strings.HasPrefix(arg, "-") {
+		if specification.allowsArgument(arg) {
 			continue
 		}
 
@@ -56,6 +37,32 @@ func (specification Specification) Validate(args []string) error {
 	}
 
 	return nil
+}
+
+func (specification Specification) allowsArgument(arg string) bool {
+	if _, ok := specification.AllowedFlags[arg]; ok {
+		return true
+	}
+
+	if specification.hasAllowedPrefix(arg) {
+		return true
+	}
+
+	if specification.AllowPaths && isPathArgument(arg) {
+		return true
+	}
+
+	return specification.AllowValues && !strings.HasPrefix(arg, "-")
+}
+
+func (specification Specification) hasAllowedPrefix(arg string) bool {
+	for _, prefix := range specification.AllowedPrefixes {
+		if strings.HasPrefix(arg, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 type Allowlist struct {

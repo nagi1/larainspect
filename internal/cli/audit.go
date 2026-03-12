@@ -24,8 +24,51 @@ func runAuditCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, ar
 }
 
 func runAuditCommandWithInput(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, args []string) int {
+	config, helpRequested, err := parseAuditConfig(args)
+	if helpRequested {
+		printAuditHelp(stdout)
+		return 0
+	}
+	if err != nil {
+		writeFlagError(stderr, err, printAuditHelp)
+		return int(model.ExitCodeUsageError)
+	}
+
+	config, err = resolveAuditConfig(stdin, stderr, config)
+	if err != nil {
+		return writeUsageError(stderr, err, true)
+	}
+
+	reporter, err := reporterFor(config.Format)
+	if err != nil {
+		return writeUsageError(stderr, err, true)
+	}
+
+	execution, err := newExecutionContext(config)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return int(model.ExitCodeAuditFailed)
+	}
+
+	auditReport, err := runAudit(ctx, execution)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return int(model.ExitCodeAuditFailed)
+	}
+
+	writeOnboarding(stdout, config)
+	if err := reporter.Render(stdout, auditReport); err != nil {
+		fmt.Fprintln(stderr, err)
+		return int(model.ExitCodeAuditFailed)
+	}
+	writeFooter(stdout, auditReport, config)
+
+	return int(model.ExitCodeForReport(auditReport))
+}
+
+func parseAuditConfig(args []string) (model.AuditConfig, bool, error) {
 	flagSet := newFlagSet("audit")
-	format := flagSet.String("format", "terminal", "Output format: terminal or json")
+	format := flagSet.String("format", model.OutputFormatTerminal, "Output format: terminal or json")
 	verbosity := flagSet.String("verbosity", string(model.VerbosityNormal), "Output detail: quiet, normal, or verbose")
 	scope := flagSet.String("scope", string(model.ScanScopeAuto), "Scan scope: auto, host, or app")
 	appPath := flagSet.String("app-path", "", "App path to prioritize when scope=app")
@@ -38,21 +81,10 @@ func runAuditCommandWithInput(ctx context.Context, stdin io.Reader, stdout io.Wr
 	workerLimit := flagSet.Int("worker-limit", runner.DefaultWorkerLimit(), "Reserved worker cap for bounded concurrency")
 
 	if err := flagSet.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			printAuditHelp(stdout)
-			return 0
+		if err == flag.ErrHelp {
+			return model.AuditConfig{}, true, nil
 		}
-
-		writeFlagError(stderr, err, printAuditHelp)
-		return int(model.ExitCodeUsageError)
-	}
-
-	reporter, err := reporterFor(*format)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		fmt.Fprintln(stderr)
-		printAuditHelp(stderr)
-		return int(model.ExitCodeUsageError)
+		return model.AuditConfig{}, false, err
 	}
 
 	if *noColor {
@@ -60,7 +92,7 @@ func runAuditCommandWithInput(ctx context.Context, stdin io.Reader, stdout io.Wr
 	}
 
 	config := model.AuditConfig{
-		Format:         strings.ToLower(strings.TrimSpace(*format)),
+		Format:         model.NormalizeOutputFormat(*format),
 		CommandTimeout: *commandTimeout,
 		MaxOutputBytes: *maxOutputBytes,
 		WorkerLimit:    *workerLimit,
@@ -73,69 +105,70 @@ func runAuditCommandWithInput(ctx context.Context, stdin io.Reader, stdout io.Wr
 	}
 
 	if err := config.Validate(); err != nil {
-		fmt.Fprintln(stderr, err)
-		fmt.Fprintln(stderr)
-		printAuditHelp(stderr)
-		return int(model.ExitCodeUsageError)
+		return model.AuditConfig{}, false, err
 	}
 
+	return config, false, nil
+}
+
+func resolveAuditConfig(stdin io.Reader, stderr io.Writer, config model.AuditConfig) (model.AuditConfig, error) {
 	resolvedConfig, err := ux.Prompter{Input: stdin, Output: stderr}.ResolveAuditConfig(config)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return int(model.ExitCodeUsageError)
+		return model.AuditConfig{}, err
 	}
 
-	if resolvedConfig.Scope == model.ScanScopeApp && strings.TrimSpace(resolvedConfig.AppPath) == "" {
-		fmt.Fprintln(stderr, "scope=app requires --app-path, or re-run with --interactive for guided input")
-		fmt.Fprintln(stderr)
-		printAuditHelp(stderr)
-		return int(model.ExitCodeUsageError)
+	if err := resolvedConfig.ValidateResolved(); err != nil {
+		return model.AuditConfig{}, err
 	}
 
-	commandRunner := runner.NewCommandRunner(*commandTimeout, *maxOutputBytes, runner.DefaultAllowlist())
-	execution, err := runner.NewExecutionContext(resolvedConfig, commandRunner)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return int(model.ExitCodeAuditFailed)
-	}
+	return resolvedConfig, nil
+}
 
+func newExecutionContext(config model.AuditConfig) (model.ExecutionContext, error) {
+	commandRunner := runner.NewCommandRunner(config.CommandTimeout, config.MaxOutputBytes, runner.DefaultAllowlist())
+	return runner.NewExecutionContext(config, commandRunner)
+}
+
+func runAudit(ctx context.Context, execution model.ExecutionContext) (model.Report, error) {
 	auditor := runner.Auditor{
-		Discovery:   discovery.NoopService{},
-		Checks:      checks.Registered(),
-		Correlators: nil,
+		Discovery: discovery.NoopService{},
+		Checks:    checks.Registered(),
 	}
 
-	auditReport, err := auditor.Run(ctx, execution)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return int(model.ExitCodeAuditFailed)
+	return auditor.Run(ctx, execution)
+}
+
+func writeOnboarding(stdout io.Writer, config model.AuditConfig) {
+	if !config.UsesTerminalOutput() {
+		return
 	}
 
-	if resolvedConfig.Format == "terminal" {
-		if onboarding := ux.Onboarding(resolvedConfig); onboarding != "" {
-			fmt.Fprint(stdout, onboarding)
-		}
+	onboarding := ux.Onboarding(config)
+	if onboarding == "" {
+		return
 	}
 
-	if err := reporter.Render(stdout, auditReport); err != nil {
-		fmt.Fprintln(stderr, err)
-		return int(model.ExitCodeAuditFailed)
+	fmt.Fprint(stdout, onboarding)
+}
+
+func writeFooter(stdout io.Writer, report model.Report, config model.AuditConfig) {
+	if !config.UsesTerminalOutput() {
+		return
 	}
 
-	if resolvedConfig.Format == "terminal" {
-		if footer := ux.Footer(auditReport, resolvedConfig); footer != "" {
-			fmt.Fprintf(stdout, "\n%s", footer)
-		}
+	footer := ux.Footer(report, config)
+	if footer == "" {
+		return
 	}
 
-	return int(model.ExitCodeForReport(auditReport))
+	fmt.Fprintf(stdout, "\n%s", footer)
 }
 
 func reporterFor(format string) (report.Reporter, error) {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "terminal", "":
+	switch model.NormalizeOutputFormat(format) {
+	case model.OutputFormatTerminal:
 		return terminal.NewReporter(), nil
-	case "json":
+	case model.OutputFormatJSON:
 		return jsonreport.NewReporter(), nil
 	default:
 		return nil, errors.New("unsupported format; use terminal or json")
@@ -145,4 +178,16 @@ func reporterFor(format string) (report.Reporter, error) {
 func printAuditHelp(writer io.Writer) {
 	fmt.Fprint(writer, strings.TrimSpace(ux.AuditHelp()))
 	fmt.Fprintln(writer)
+}
+
+func writeUsageError(stderr io.Writer, err error, withHelp bool) int {
+	fmt.Fprintln(stderr, err)
+	if !withHelp {
+		return int(model.ExitCodeUsageError)
+	}
+
+	fmt.Fprintln(stderr)
+	printAuditHelp(stderr)
+
+	return int(model.ExitCodeUsageError)
 }

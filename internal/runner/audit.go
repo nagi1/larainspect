@@ -86,13 +86,7 @@ func (auditor Auditor) Run(ctx context.Context, execution model.ExecutionContext
 	for _, check := range auditor.Checks {
 		result, runErr := check.Run(ctx, execution, snapshot)
 		if runErr != nil {
-			collectedUnknowns = append(collectedUnknowns, model.Unknown{
-				ID:      check.ID() + ".error",
-				CheckID: check.ID(),
-				Title:   "Check execution failed",
-				Reason:  runErr.Error(),
-				Error:   model.ErrorKindCommandFailed,
-			})
+			collectedUnknowns = append(collectedUnknowns, executionUnknown(check.ID(), "Check execution failed", runErr))
 			continue
 		}
 
@@ -103,13 +97,7 @@ func (auditor Auditor) Run(ctx context.Context, execution model.ExecutionContext
 	for _, correlator := range auditor.Correlators {
 		result, correlateErr := correlator.Correlate(ctx, execution, snapshot, findings)
 		if correlateErr != nil {
-			collectedUnknowns = append(collectedUnknowns, model.Unknown{
-				ID:      correlator.ID() + ".error",
-				CheckID: correlator.ID(),
-				Title:   "Correlation execution failed",
-				Reason:  correlateErr.Error(),
-				Error:   model.ErrorKindCommandFailed,
-			})
+			collectedUnknowns = append(collectedUnknowns, executionUnknown(correlator.ID(), "Correlation execution failed", correlateErr))
 			continue
 		}
 
@@ -122,4 +110,14 @@ func (auditor Auditor) Run(ctx context.Context, execution model.ExecutionContext
 
 func runtimeHostname() (string, error) {
 	return osHostname()
+}
+
+func executionUnknown(checkID string, title string, err error) model.Unknown {
+	return model.Unknown{
+		ID:      checkID + ".error",
+		CheckID: checkID,
+		Title:   title,
+		Reason:  err.Error(),
+		Error:   model.ErrorKindCommandFailed,
+	}
 }

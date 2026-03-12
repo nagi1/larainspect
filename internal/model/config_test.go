@@ -47,7 +47,7 @@ func TestAuditConfigValidate(t *testing.T) {
 	t.Parallel()
 
 	valid := model.AuditConfig{
-		Format:         "terminal",
+		Format:         model.OutputFormatTerminal,
 		CommandTimeout: time.Second,
 		MaxOutputBytes: 1024,
 		WorkerLimit:    1,
@@ -62,14 +62,47 @@ func TestAuditConfigValidate(t *testing.T) {
 
 	testCases := []model.AuditConfig{
 		{Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto},
-		{Format: "terminal", Verbosity: model.Verbosity("bad"), Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto},
-		{Format: "terminal", Verbosity: model.VerbosityNormal, Scope: model.ScanScope("bad"), ColorMode: model.ColorModeAuto},
-		{Format: "terminal", Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorMode("bad")},
+		{Format: "bad", Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto},
+		{Format: model.OutputFormatTerminal, Verbosity: model.Verbosity("bad"), Scope: model.ScanScopeAuto, ColorMode: model.ColorModeAuto},
+		{Format: model.OutputFormatTerminal, Verbosity: model.VerbosityNormal, Scope: model.ScanScope("bad"), ColorMode: model.ColorModeAuto},
+		{Format: model.OutputFormatTerminal, Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ColorMode: model.ColorMode("bad")},
 	}
 
 	for _, config := range testCases {
 		if err := config.Validate(); err == nil {
 			t.Fatalf("expected validation error for config %+v", config)
 		}
+	}
+}
+
+func TestOutputFormatHelpers(t *testing.T) {
+	t.Parallel()
+
+	if got := model.NormalizeOutputFormat(" JSON "); got != model.OutputFormatJSON {
+		t.Fatalf("NormalizeOutputFormat() = %q", got)
+	}
+
+	if !model.IsValidOutputFormat(model.OutputFormatTerminal) || !model.IsValidOutputFormat(model.OutputFormatJSON) {
+		t.Fatal("expected built-in output formats to be valid")
+	}
+
+	if model.IsValidOutputFormat("xml") {
+		t.Fatal("expected invalid format to be rejected")
+	}
+
+	if !(model.AuditConfig{Format: model.OutputFormatTerminal}).UsesTerminalOutput() {
+		t.Fatal("expected terminal config to use terminal output")
+	}
+}
+
+func TestAuditConfigValidateResolved(t *testing.T) {
+	t.Parallel()
+
+	if err := (model.AuditConfig{Scope: model.ScanScopeApp}).ValidateResolved(); err == nil {
+		t.Fatal("expected missing app path error")
+	}
+
+	if err := (model.AuditConfig{Scope: model.ScanScopeApp, AppPath: "/var/www/shop"}).ValidateResolved(); err != nil {
+		t.Fatalf("ValidateResolved() error = %v", err)
 	}
 }

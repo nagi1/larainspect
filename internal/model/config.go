@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+const (
+	OutputFormatTerminal = "terminal"
+	OutputFormatJSON     = "json"
+)
+
 type Verbosity string
 
 const (
@@ -56,9 +61,29 @@ func (mode ColorMode) Valid() bool {
 	}
 }
 
+func NormalizeOutputFormat(format string) string {
+	return strings.ToLower(strings.TrimSpace(format))
+}
+
+func IsValidOutputFormat(format string) bool {
+	switch NormalizeOutputFormat(format) {
+	case OutputFormatTerminal, OutputFormatJSON:
+		return true
+	default:
+		return false
+	}
+}
+
+func (config AuditConfig) UsesTerminalOutput() bool {
+	return NormalizeOutputFormat(config.Format) == OutputFormatTerminal
+}
+
 func (config AuditConfig) Validate() error {
 	if strings.TrimSpace(config.Format) == "" {
 		return fmt.Errorf("format is required")
+	}
+	if !IsValidOutputFormat(config.Format) {
+		return fmt.Errorf("format %q is invalid", config.Format)
 	}
 	if !config.Verbosity.Valid() {
 		return fmt.Errorf("verbosity %q is invalid", config.Verbosity)
@@ -68,6 +93,14 @@ func (config AuditConfig) Validate() error {
 	}
 	if !config.ColorMode.Valid() {
 		return fmt.Errorf("color mode %q is invalid", config.ColorMode)
+	}
+
+	return nil
+}
+
+func (config AuditConfig) ValidateResolved() error {
+	if config.Scope == ScanScopeApp && strings.TrimSpace(config.AppPath) == "" {
+		return fmt.Errorf("scope=app requires --app-path, or re-run with --interactive for guided input")
 	}
 
 	return nil

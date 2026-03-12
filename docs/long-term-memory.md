@@ -33,6 +33,10 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - CLI scan scopes are `auto`, `host`, and `app`
 - Guided UX is opt-in through `--interactive`; prompts go to stderr so JSON stdout stays clean
 - Foundation CLI output remains plain ASCII without ANSI colors and exposes `--screen-reader` and color preferences as stable operator options
+- CLI orchestration should stay split into small steps: parse config, resolve guided input, build execution context, run audit, and render output
+- Output-format normalization and config validation should stay centralized in the model layer instead of being reimplemented ad hoc in CLI handlers
+- Repeated failure-to-unknown mapping and repeated terminal-only rendering branches should be extracted into helpers early instead of duplicated across execution paths
+- Favor descriptive helper names and early returns when adding new CLI or runner behavior; do not let one function accumulate parsing, validation, execution, and rendering concerns at once
 
 ## Architecture Direction
 

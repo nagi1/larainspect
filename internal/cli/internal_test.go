@@ -58,7 +58,6 @@ func TestReporterFor(t *testing.T) {
 		want   string
 		ok     bool
 	}{
-		{format: "", want: "terminal", ok: true},
 		{format: "terminal", want: "terminal", ok: true},
 		{format: "json", want: "json", ok: true},
 		{format: "bad", ok: false},
@@ -79,5 +78,18 @@ func TestReporterFor(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for format %q", testCase.format)
 		}
+	}
+}
+
+func TestWriteUsageError(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	exitCode := writeUsageError(&output, errors.New("bad input"), true)
+	if exitCode != int(model.ExitCodeUsageError) {
+		t.Fatalf("expected usage exit code, got %d", exitCode)
+	}
+	if !strings.Contains(output.String(), "bad input") || !strings.Contains(output.String(), "larainspect audit") {
+		t.Fatalf("unexpected usage output %q", output.String())
 	}
 }
