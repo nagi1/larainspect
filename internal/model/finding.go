@@ -262,6 +262,12 @@ type AuditConfig struct {
 	CommandTimeout time.Duration
 	MaxOutputBytes int
 	WorkerLimit    int
+	Verbosity      Verbosity
+	Scope          ScanScope
+	Interactive    bool
+	AppPath        string
+	ColorMode      ColorMode
+	ScreenReader   bool
 }
 
 type CommandRequest struct {

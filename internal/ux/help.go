@@ -1,0 +1,86 @@
+package ux
+
+func RootHelp() string {
+	return `larainspect
+
+Read-only Laravel VPS auditor for operators under pressure.
+
+Safety promises:
+  - never mutates files, permissions, services, or firewall rules
+  - keeps direct findings, heuristics, compromise indicators, and unknowns separate
+  - stays usable in automation and optional guided mode
+
+Usage:
+  larainspect audit [flags]
+  larainspect help
+  larainspect version
+
+Quick start:
+  larainspect audit
+  larainspect audit --scope app --app-path /var/www/shop
+  larainspect audit --interactive
+  larainspect audit --format json --verbosity quiet
+
+Commands:
+  audit     Run the read-only audit workflow
+  help      Show command help
+  version   Print the development version
+
+Learn more:
+  Use 'larainspect audit --help' for flags, onboarding, interactive guidance, and exit codes.
+`
+}
+
+func AuditHelp() string {
+	return `larainspect audit
+
+Run the read-only audit workflow.
+
+This command is designed to stay safe on production systems. It never writes to
+application code, service config, permissions, or runtime state.
+
+Usage:
+  larainspect audit [flags]
+
+Examples:
+  larainspect audit
+  larainspect audit --scope app --app-path /var/www/shop
+  larainspect audit --interactive
+  larainspect audit --format json --verbosity quiet
+  larainspect audit --verbosity verbose --screen-reader
+
+Helpful modes:
+  quiet        Minimal terminal chatter for scripts and focused reruns
+  normal       Plain-language onboarding with the standard report
+  verbose      Adds operator-facing config summary and next-step guidance
+  interactive  Prompts for missing app-focused input without breaking automation defaults
+
+Accessibility:
+  - foundation output uses plain ASCII text and no ANSI colors
+  - --screen-reader keeps guidance compact and explicit
+  - --verbosity quiet removes extra onboarding/footer copy
+  - JSON output remains clean on stdout for machine consumers
+
+Flags:
+  --format string            Output format: terminal or json (default "terminal")
+  --verbosity string         Output detail: quiet, normal, or verbose (default "normal")
+  --scope string             Scan scope: auto, host, or app (default "auto")
+  --app-path string          App path to prioritize when scope=app
+  --interactive              Enable guided prompts for missing app-focused input
+  --color string             Color preference for later styled output: auto, always, or never (default "auto")
+  --no-color                 Shortcut for --color never
+  --screen-reader            Prefer concise, explicit guidance for screen-reader use
+  --command-timeout duration Timeout for one allowlisted command (default 2s)
+  --max-output-bytes int     Maximum bytes captured per command stream (default 65536)
+  --worker-limit int         Reserved worker cap for bounded concurrency
+
+Exit codes:
+  0   clean audit with no findings or unknowns
+  2   usage or flag error
+  10  low or informational risk, or unknown-only audit result
+  20  medium-risk finding present
+  30  high-risk finding present
+  40  critical-risk finding present
+  50  audit execution failure
+`
+}

@@ -29,6 +29,10 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Foundation exit codes are severity-based: `0`, `2`, `10`, `20`, `30`, `40`, and `50`
 - JSON severity summaries keep all severity buckets present, including zero counts, for machine-readable stability
 - The explicit JSON schema draft lives in `internal/report/schema/report.schema.json` and is exposed by the schema package for tooling
+- CLI verbosity levels are `quiet`, `normal`, and `verbose`
+- CLI scan scopes are `auto`, `host`, and `app`
+- Guided UX is opt-in through `--interactive`; prompts go to stderr so JSON stdout stays clean
+- Foundation CLI output remains plain ASCII without ANSI colors and exposes `--screen-reader` and color preferences as stable operator options
 
 ## Architecture Direction
 

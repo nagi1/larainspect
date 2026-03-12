@@ -23,6 +23,7 @@ The repository is currently in the foundation phase. The codebase now includes:
 ```bash
 go test ./...
 go run ./cmd/larainspect audit
+go run ./cmd/larainspect audit --interactive
 go run ./cmd/larainspect audit --format json
 ```
 
@@ -40,4 +41,5 @@ go run ./cmd/larainspect audit --format json
 
 - [Project docs](/Users/nagi/code/larainspect/docs/README.md)
 - [Foundation contracts](/Users/nagi/code/larainspect/docs/foundation-contracts.md)
+- [CLI UX guide](/Users/nagi/code/larainspect/docs/cli-ux-and-accessibility.md)
 - [Contributor guide](/Users/nagi/code/larainspect/CONTRIBUTING.md)

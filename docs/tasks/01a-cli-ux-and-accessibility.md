@@ -1,5 +1,9 @@
 # 01A CLI UX And Accessibility
 
+## Status
+
+CLI UX and accessibility are implemented.
+
 ## Goal
 
 Design and implement a CLI experience that is highly helpful, informative, configurable, interactive where useful, accessible, and easy for beginners to use without reducing value for experienced operators.
@@ -24,6 +28,40 @@ Design and implement a CLI experience that is highly helpful, informative, confi
 - configuration and interactivity design for the CLI surface
 - accessibility and output-style rules
 - regression tests covering CLI help, flags, and representative UX flows
+
+## Implemented Artifacts
+
+- CLI command and flag wiring:
+  - [app.go](/Users/nagi/code/larainspect/internal/cli/app.go)
+  - [audit.go](/Users/nagi/code/larainspect/internal/cli/audit.go)
+- UX helpers and guided prompts:
+  - [help.go](/Users/nagi/code/larainspect/internal/ux/help.go)
+  - [messages.go](/Users/nagi/code/larainspect/internal/ux/messages.go)
+  - [prompt.go](/Users/nagi/code/larainspect/internal/ux/prompt.go)
+- UX and accessibility documentation:
+  - [cli-ux-and-accessibility.md](/Users/nagi/code/larainspect/docs/cli-ux-and-accessibility.md)
+  - [CONTRIBUTING.md](/Users/nagi/code/larainspect/CONTRIBUTING.md)
+- Regression tests:
+  - [app_test.go](/Users/nagi/code/larainspect/internal/cli/app_test.go)
+
+## Verification
+
+Representative UX verification currently includes:
+
+- `go test ./internal/cli ./internal/ux ./internal/model`
+- `go run ./cmd/larainspect audit`
+- `go run ./cmd/larainspect audit --interactive`
+- `go run ./cmd/larainspect audit --format json --verbosity quiet`
+
+Covered behaviors:
+
+- root help content
+- audit help content
+- app-scope validation in non-interactive mode
+- guided app-path prompting in interactive mode
+- verbose onboarding and next-step guidance
+- quiet-mode suppression of extra UX copy
+- JSON-mode clean stdout behavior
 
 ## Blockers To Watch
 

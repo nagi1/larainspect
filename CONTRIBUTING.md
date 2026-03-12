@@ -16,7 +16,9 @@ This repository is intended to stay beginner-friendly, explicit, and easy to ext
 ## Commands
 
 - Run tests: `go test ./...`
+- Measure total coverage: `go test ./... -coverprofile=/tmp/larainspect-coverage.out && go tool cover -func=/tmp/larainspect-coverage.out`
 - Run the CLI: `go run ./cmd/larainspect audit`
+- Run guided mode: `go run ./cmd/larainspect audit --interactive`
 - Render JSON: `go run ./cmd/larainspect audit --format json`
 
 ## Exit-code contract
@@ -37,12 +39,14 @@ This repository is intended to stay beginner-friendly, explicit, and easy to ext
 - Update golden files deliberately when a public output contract changes.
 - Avoid network access and mutable host assumptions in tests.
 - Keep the explicit machine-readable report draft in `internal/report/schema/report.schema.json` aligned with the Go report model.
+- Keep total statement coverage at or above `90%`.
 
 ## Package boundaries
 
 - `cmd/larainspect`: binary entrypoint only
 - `internal/cli`: argument parsing and command orchestration
 - `internal/model`: stable audit contracts and shared data model
+- `internal/ux`: help text, onboarding, accessibility, and guided prompts
 - `internal/runner`: audited command execution
 - `internal/discovery`: snapshot discovery contracts and placeholder service
 - `internal/checks`: check registration and execution contracts
@@ -75,3 +79,10 @@ Package-level guidance for the extension points lives in the local `doc.go` file
 - Foundation keeps execution sequential for determinism.
 - The shared execution context already carries a `WorkerLimit` so later phases can add bounded concurrency without changing public contracts.
 - Future parallel work must stay context-aware, deterministic in output ordering, and safe for production hosts.
+
+## UX rules
+
+- Keep machine-readable stdout clean when `--format json` is used.
+- Keep prompts on stderr in guided flows.
+- Never make interactive prompts implicit; they must remain opt-in.
+- Add CLI-focused regression tests for any new flags, help text, or guided behavior.
