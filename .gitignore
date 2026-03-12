@@ -1,0 +1,12 @@
+.DS_Store
+
+# Go build artifacts
+/bin/
+/dist/
+*.test
+*.out
+coverage.out
+
+# Local Go workspace caches
+.gocache/
+

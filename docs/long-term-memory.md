@@ -21,6 +21,11 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - CLI UX is a first-class requirement: helpful, informative, configurable, interactive where useful, accessible, and beginner-friendly
 - Go is a deliberate choice for speed, portability, simple distribution, and safe concurrency where it helps audit performance
 - The hardened Laravel VPS baseline is tracked explicitly in `docs/security-checklist.md`
+- Foundation currently targets Go `1.23` as the minimum supported contributor toolchain
+- Foundation intentionally uses the Go standard library only; dependency additions must be justified in later phases
+- The public JSON report draft version is `v0alpha1`
+- Foundation keeps execution sequential but carries a `WorkerLimit` through the execution context for later bounded concurrency
+- Golden report tests live alongside reporter packages and shared deterministic fixtures live in `internal/testfixtures`
 
 ## Architecture Direction
 
