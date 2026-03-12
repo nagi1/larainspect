@@ -72,6 +72,8 @@ func parseAuditConfig(args []string) (model.AuditConfig, bool, error) {
 	verbosity := flagSet.String("verbosity", string(model.VerbosityNormal), "Output detail: quiet, normal, or verbose")
 	scope := flagSet.String("scope", string(model.ScanScopeAuto), "Scan scope: auto, host, or app")
 	appPath := flagSet.String("app-path", "", "App path to prioritize when scope=app")
+	var scanRoots stringListFlag
+	flagSet.Var(&scanRoots, "scan-root", "Additional root to scan for Laravel apps; may be repeated")
 	interactive := flagSet.Bool("interactive", false, "Enable guided prompts for missing app-focused input")
 	colorMode := flagSet.String("color", string(model.ColorModeAuto), "Color preference: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "Shortcut for --color never")
@@ -100,6 +102,7 @@ func parseAuditConfig(args []string) (model.AuditConfig, bool, error) {
 		Scope:          model.ScanScope(strings.ToLower(strings.TrimSpace(*scope))),
 		Interactive:    *interactive,
 		AppPath:        strings.TrimSpace(*appPath),
+		ScanRoots:      scanRoots.values(),
 		ColorMode:      model.ColorMode(strings.ToLower(strings.TrimSpace(*colorMode))),
 		ScreenReader:   *screenReader,
 	}
@@ -131,7 +134,7 @@ func newExecutionContext(config model.AuditConfig) (model.ExecutionContext, erro
 
 func runAudit(ctx context.Context, execution model.ExecutionContext) (model.Report, error) {
 	auditor := runner.Auditor{
-		Discovery: discovery.NoopService{},
+		Discovery: discovery.NewService(),
 		Checks:    checks.Registered(),
 	}
 
@@ -173,6 +176,32 @@ func reporterFor(format string) (report.Reporter, error) {
 	default:
 		return nil, errors.New("unsupported format; use terminal or json")
 	}
+}
+
+type stringListFlag struct {
+	items []string
+}
+
+func (flagValue *stringListFlag) String() string {
+	return strings.Join(flagValue.items, ",")
+}
+
+func (flagValue *stringListFlag) Set(value string) error {
+	flagValue.items = append(flagValue.items, strings.TrimSpace(value))
+	return nil
+}
+
+func (flagValue stringListFlag) values() []string {
+	values := make([]string, 0, len(flagValue.items))
+	for _, item := range flagValue.items {
+		trimmedItem := strings.TrimSpace(item)
+		if trimmedItem == "" {
+			continue
+		}
+		values = append(values, trimmedItem)
+	}
+
+	return values
 }
 
 func printAuditHelp(writer io.Writer) {

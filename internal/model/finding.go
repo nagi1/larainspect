@@ -184,6 +184,7 @@ type ToolAvailability map[string]bool
 type Snapshot struct {
 	Host  Host             `json:"host"`
 	Tools ToolAvailability `json:"tools,omitempty"`
+	Apps  []LaravelApp     `json:"apps,omitempty"`
 }
 
 type Report struct {
@@ -266,6 +267,7 @@ type AuditConfig struct {
 	Scope          ScanScope
 	Interactive    bool
 	AppPath        string
+	ScanRoots      []string
 	ColorMode      ColorMode
 	ScreenReader   bool
 }

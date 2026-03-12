@@ -93,3 +93,41 @@ func TestWriteUsageError(t *testing.T) {
 		t.Fatalf("unexpected usage output %q", output.String())
 	}
 }
+
+func TestParseAuditConfigCollectsScanRoots(t *testing.T) {
+	t.Parallel()
+
+	config, helpRequested, err := parseAuditConfig([]string{"--scan-root", "/var/www", "--scan-root", "/srv/apps"})
+	if err != nil {
+		t.Fatalf("parseAuditConfig() error = %v", err)
+	}
+
+	if helpRequested {
+		t.Fatal("expected helpRequested to be false")
+	}
+
+	if len(config.ScanRoots) != 2 {
+		t.Fatalf("expected two scan roots, got %+v", config.ScanRoots)
+	}
+
+	if config.ScanRoots[0] != "/var/www" || config.ScanRoots[1] != "/srv/apps" {
+		t.Fatalf("unexpected scan roots %+v", config.ScanRoots)
+	}
+}
+
+func TestParseAuditConfigSupportsNoColorShortcut(t *testing.T) {
+	t.Parallel()
+
+	config, helpRequested, err := parseAuditConfig([]string{"--no-color"})
+	if err != nil {
+		t.Fatalf("parseAuditConfig() error = %v", err)
+	}
+
+	if helpRequested {
+		t.Fatal("expected helpRequested to be false")
+	}
+
+	if config.ColorMode != model.ColorModeNever {
+		t.Fatalf("expected --no-color to force never, got %q", config.ColorMode)
+	}
+}

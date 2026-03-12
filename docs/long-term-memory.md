@@ -31,6 +31,8 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - The explicit JSON schema draft lives in `internal/report/schema/report.schema.json` and is exposed by the schema package for tooling
 - CLI verbosity levels are `quiet`, `normal`, and `verbose`
 - CLI scan scopes are `auto`, `host`, and `app`
+- Discovery now supports explicit `--app-path` inspection plus repeatable `--scan-root` inputs for Laravel app detection
+- User-provided discovery input must never fail silently; invalid requested app paths should become explicit unknowns with evidence instead of disappearing from the report
 - Guided UX is opt-in through `--interactive`; prompts go to stderr so JSON stdout stays clean
 - Foundation CLI output remains plain ASCII without ANSI colors and exposes `--screen-reader` and color preferences as stable operator options
 - CLI orchestration should stay split into small steps: parse config, resolve guided input, build execution context, run audit, and render output
@@ -47,6 +49,8 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Use compile-time registration for checks instead of runtime plugin loading.
 - Treat the discovered host/app state as a normalized snapshot consumed by checks.
 - Keep subsystem parsers reusable so many checks can share one normalized source of truth.
+- App discovery records resolved Laravel roots, marker files, and relevant Composer package metadata so later checks can reason over one normalized app snapshot.
+- Negative-path coverage is a release gate for discovery changes: missing paths, non-Laravel roots, parse failures, permission failures, and cancellation should all be regression-tested
 - Keep reporters free of detection and correlation logic.
 - Keep package boundaries and identifiers explicit so contributors can extend checks safely.
 - Prefer simple, maintainable abstractions over highly generic internal frameworks.

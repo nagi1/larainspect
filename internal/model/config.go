@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -76,6 +78,34 @@ func IsValidOutputFormat(format string) bool {
 
 func (config AuditConfig) UsesTerminalOutput() bool {
 	return NormalizeOutputFormat(config.Format) == OutputFormatTerminal
+}
+
+func (config AuditConfig) ShouldDiscoverApplications() bool {
+	return config.Scope != ScanScopeHost
+}
+
+func (config AuditConfig) NormalizedScanRoots() []string {
+	normalizedRoots := make([]string, 0, len(config.ScanRoots))
+	seenRoots := map[string]struct{}{}
+
+	for _, root := range config.ScanRoots {
+		trimmedRoot := strings.TrimSpace(root)
+		if trimmedRoot == "" {
+			continue
+		}
+
+		cleanRoot := filepath.Clean(trimmedRoot)
+		if _, alreadySeen := seenRoots[cleanRoot]; alreadySeen {
+			continue
+		}
+
+		seenRoots[cleanRoot] = struct{}{}
+		normalizedRoots = append(normalizedRoots, cleanRoot)
+	}
+
+	slices.Sort(normalizedRoots)
+
+	return normalizedRoots
 }
 
 func (config AuditConfig) Validate() error {

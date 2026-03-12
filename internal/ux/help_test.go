@@ -27,6 +27,7 @@ func TestAuditHelp(t *testing.T) {
 	for _, want := range []string{
 		"Helpful modes:",
 		"Accessibility:",
+		"--scan-root",
 		"--screen-reader",
 		"Exit codes:",
 	} {

@@ -41,7 +41,7 @@ func Footer(report model.Report, config model.AuditConfig) string {
 	}
 
 	if report.Summary.TotalFindings == 0 && report.Summary.Unknowns == 0 {
-		return "Next steps\n----------\nNo Laravel-specific checks are registered yet in this foundation build.\nUse this phase to validate CLI behavior now, then add real discovery and checks in later tasks.\n"
+		return "Next steps\n----------\nNo risk checks have produced findings in this build yet.\nUse discovery flags like --app-path or --scan-root to validate host evidence collection before later checks land.\n"
 	}
 
 	lines := []string{

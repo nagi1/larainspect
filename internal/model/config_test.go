@@ -106,3 +106,36 @@ func TestAuditConfigValidateResolved(t *testing.T) {
 		t.Fatalf("ValidateResolved() error = %v", err)
 	}
 }
+
+func TestAuditConfigShouldDiscoverApplications(t *testing.T) {
+	t.Parallel()
+
+	if (model.AuditConfig{Scope: model.ScanScopeHost}).ShouldDiscoverApplications() {
+		t.Fatal("expected host scope to skip app discovery")
+	}
+
+	if !(model.AuditConfig{Scope: model.ScanScopeAuto}).ShouldDiscoverApplications() {
+		t.Fatal("expected auto scope to allow app discovery")
+	}
+}
+
+func TestAuditConfigNormalizedScanRoots(t *testing.T) {
+	t.Parallel()
+
+	config := model.AuditConfig{
+		ScanRoots: []string{" /var/www ", "/srv/../srv/apps", "/var/www", ""},
+	}
+
+	got := config.NormalizedScanRoots()
+	want := []string{"/srv/apps", "/var/www"}
+
+	if len(got) != len(want) {
+		t.Fatalf("NormalizedScanRoots() length = %d, want %d (%v)", len(got), len(want), got)
+	}
+
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("NormalizedScanRoots()[%d] = %q, want %q (%v)", index, got[index], want[index], got)
+		}
+	}
+}

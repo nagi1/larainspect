@@ -45,6 +45,7 @@ Usage:
 Examples:
   larainspect audit
   larainspect audit --scope app --app-path /var/www/shop
+  larainspect audit --scan-root /var/www --scan-root /srv/www
   larainspect audit --interactive
   larainspect audit --format json --verbosity quiet
   larainspect audit --verbosity verbose --screen-reader
@@ -66,6 +67,7 @@ Flags:
   --verbosity string         Output detail: quiet, normal, or verbose (default "normal")
   --scope string             Scan scope: auto, host, or app (default "auto")
   --app-path string          App path to prioritize when scope=app
+  --scan-root value          Additional root to scan for Laravel apps; may be repeated
   --interactive              Enable guided prompts for missing app-focused input
   --color string             Color preference for later styled output: auto, always, or never (default "auto")
   --no-color                 Shortcut for --color never

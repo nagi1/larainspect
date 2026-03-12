@@ -68,7 +68,7 @@ func TestFooterModes(t *testing.T) {
 	}
 
 	clean := Footer(model.Report{}, model.AuditConfig{Verbosity: model.VerbosityNormal})
-	if !strings.Contains(clean, "No Laravel-specific checks are registered yet") {
+	if !strings.Contains(clean, "Use discovery flags like --app-path or --scan-root") {
 		t.Fatalf("expected clean footer guidance, got %q", clean)
 	}
 

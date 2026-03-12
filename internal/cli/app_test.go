@@ -3,6 +3,8 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,10 +91,11 @@ func TestAuditScopeAppRequiresPathWithoutInteractiveMode(t *testing.T) {
 func TestInteractiveAuditPromptsForAppPath(t *testing.T) {
 	t.Parallel()
 
+	appPath := createLaravelAppFixture(t)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.NewAppWithInput(strings.NewReader("app\n/var/www/shop\n"), &stdout, &stderr).Run(
+	exitCode := cli.NewAppWithInput(strings.NewReader("app\n"+appPath+"\n"), &stdout, &stderr).Run(
 		context.Background(),
 		[]string{"audit", "--interactive", "--format", "json"},
 	)
@@ -153,6 +156,32 @@ func TestQuietTerminalAuditSuppressesExtraGuidance(t *testing.T) {
 	}
 }
 
+func TestAuditReportsUnknownForNonLaravelRequestedAppPath(t *testing.T) {
+	t.Parallel()
+
+	appPath := filepath.Join(t.TempDir(), "not-laravel")
+	if err := os.MkdirAll(appPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{
+		"audit",
+		"--format", "json",
+		"--scope", "app",
+		"--app-path", appPath,
+	})
+	if exitCode != int(model.ExitCodeLowRisk) {
+		t.Fatalf("expected unknown-only exit code, got %d stderr=%q", exitCode, stderr.String())
+	}
+
+	if !strings.Contains(stdout.String(), `"unknowns": 1`) {
+		t.Fatalf("expected unknown count in JSON output, got %q", stdout.String())
+	}
+}
+
 func TestAppReturnsUsageExitCodeForUnknownCommand(t *testing.T) {
 	t.Parallel()
 
@@ -162,5 +191,63 @@ func TestAppReturnsUsageExitCodeForUnknownCommand(t *testing.T) {
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"wat"})
 	if exitCode != int(model.ExitCodeUsageError) {
 		t.Fatalf("expected usage exit code %d, got %d", model.ExitCodeUsageError, exitCode)
+	}
+}
+
+func TestAppPrintsVersion(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"version"})
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+
+	if !strings.Contains(stdout.String(), "larainspect dev") {
+		t.Fatalf("expected version output, got %q", stdout.String())
+	}
+}
+
+func TestAppPrintsRootHelpForHelpCommand(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"help"})
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+
+	if !strings.Contains(stdout.String(), "Commands:") {
+		t.Fatalf("expected root help output, got %q", stdout.String())
+	}
+}
+
+func createLaravelAppFixture(t *testing.T) string {
+	t.Helper()
+
+	rootPath := t.TempDir()
+	for _, relativePath := range []string{"bootstrap", "public"} {
+		if err := os.MkdirAll(filepath.Join(rootPath, relativePath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", relativePath, err)
+		}
+	}
+
+	writeFixtureFile(t, filepath.Join(rootPath, "artisan"), "#!/usr/bin/env php\n")
+	writeFixtureFile(t, filepath.Join(rootPath, "bootstrap/app.php"), "<?php return app();\n")
+	writeFixtureFile(t, filepath.Join(rootPath, "public/index.php"), "<?php require __DIR__.'/../vendor/autoload.php';\n")
+	writeFixtureFile(t, filepath.Join(rootPath, "composer.json"), `{"name":"acme/shop","require":{"laravel/framework":"^11.0"}}`)
+
+	return rootPath
+}
+
+func writeFixtureFile(t *testing.T, path string, contents string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
 }
