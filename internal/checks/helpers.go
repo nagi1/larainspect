@@ -3,6 +3,7 @@ package checks
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -148,6 +149,29 @@ func sourceMatchesWithPrefix(app model.LaravelApp, rulePrefix string) []model.So
 	}
 
 	return matches
+}
+
+func sourceMatchesForRuleAtRelativePath(app model.LaravelApp, ruleID string, relativePath string) []model.SourceMatch {
+	matches := []model.SourceMatch{}
+	for _, sourceMatch := range app.SourceMatches {
+		if sourceMatch.RuleID != ruleID || sourceMatch.RelativePath != relativePath {
+			continue
+		}
+
+		matches = append(matches, sourceMatch)
+	}
+
+	return matches
+}
+
+func uniqueRelativePathsForMatches(matches []model.SourceMatch) []string {
+	relativePaths := make([]string, 0, len(matches))
+	for _, sourceMatch := range matches {
+		relativePaths = append(relativePaths, sourceMatch.RelativePath)
+	}
+
+	slices.Sort(relativePaths)
+	return slices.Compact(relativePaths)
 }
 
 func parseOctalMode(value string) (uint32, bool) {

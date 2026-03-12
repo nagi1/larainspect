@@ -49,6 +49,7 @@ This file stores stable project decisions, assumptions, and constraints that sho
 - Operator config files must fail fast on unknown keys and unsupported distro identifiers; silent acceptance of typos is not acceptable for a security-focused CLI
 - Prefer operator-facing config names like `server`, `laravel`, and `services` over internal model terms; default examples should feel familiar to Laravel-on-Ubuntu users and only expose advanced knobs when needed
 - Framework heuristics must only emit risky package exposure findings for packages discovery actually records in Composer metadata, and `composer.json`-only declarations must stay lower-confidence than `composer.lock` or installed-package evidence
+- Framework heuristics that compare a risky signal against a missing counter-signal must scope that comparison to the same file or resource when the signal is local; one safe Livewire component or Filament resource must not suppress another risky one elsewhere in the app
 - Repository test coverage should stay at or above 90% overall, with new heuristic and discovery code carrying positive and negative tests instead of relying on aggregate package coverage to hide gaps
 
 ## Architecture Direction

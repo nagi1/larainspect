@@ -68,8 +68,10 @@ class UserResource
         ]);
     }
 }
-`)
-	if !containsSourceMatch(filamentMatches, "filament.file.detected") || !containsSourceMatch(filamentMatches, "filament.resource.sensitive_field") {
+	`)
+	if !containsSourceMatch(filamentMatches, "filament.file.detected") ||
+		!containsSourceMatch(filamentMatches, "filament.resource.detected") ||
+		!containsSourceMatch(filamentMatches, "filament.resource.sensitive_field") {
 		t.Fatalf("expected Filament heuristic matches, got %+v", filamentMatches)
 	}
 }
@@ -150,6 +152,12 @@ func TestFrameworkSourceHelperFunctions(t *testing.T) {
 	}
 	if looksLikeFilamentFile("app/Console/Kernel.php", "") {
 		t.Fatal("expected unrelated file to fail Filament detection")
+	}
+	if !looksLikeFilamentResourceFile("app/Filament/Resources/UserResource.php") {
+		t.Fatal("expected Filament resource path to match")
+	}
+	if looksLikeFilamentResourceFile("app/Filament/Pages/Dashboard.php") {
+		t.Fatal("expected non-resource Filament path to fail")
 	}
 	if !isLikelySecuritySensitiveLivewireProperty("tenant_id") {
 		t.Fatal("expected tenant_id to be treated as sensitive")

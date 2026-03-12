@@ -70,11 +70,19 @@ func TestHelperFunctionsCoverEdgeCases(t *testing.T) {
 	}
 
 	app.SourceMatches = []model.SourceMatch{
-		{RuleID: "livewire.component.detected"},
-		{RuleID: "filament.file.detected"},
+		{RuleID: "livewire.component.detected", RelativePath: "app/Livewire/EditUser.php"},
+		{RuleID: "livewire.component.detected", RelativePath: "app/Livewire/EditUser.php"},
+		{RuleID: "filament.file.detected", RelativePath: "app/Filament/Resources/UserResource.php"},
 	}
-	if len(sourceMatchesWithPrefix(app, "livewire.")) != 1 {
-		t.Fatalf("expected sourceMatchesWithPrefix() to match one livewire signal, got %+v", app.SourceMatches)
+	if len(sourceMatchesWithPrefix(app, "livewire.")) != 2 {
+		t.Fatalf("expected sourceMatchesWithPrefix() to preserve both livewire matches, got %+v", app.SourceMatches)
+	}
+	if len(sourceMatchesForRuleAtRelativePath(app, "livewire.component.detected", "app/Livewire/EditUser.php")) != 2 {
+		t.Fatalf("expected sourceMatchesForRuleAtRelativePath() to find duplicate path matches, got %+v", app.SourceMatches)
+	}
+	relativePaths := uniqueRelativePathsForMatches(app.SourceMatches)
+	if len(relativePaths) != 2 {
+		t.Fatalf("expected uniqueRelativePathsForMatches() to compact duplicate paths, got %+v", relativePaths)
 	}
 }
 

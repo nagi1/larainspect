@@ -28,6 +28,7 @@ When adding a new heuristic in this phase:
 - extend bounded discovery source signals first; do not let checks read files directly
 - prefer one explicit rule ID per inferred signal so evidence phrasing stays stable across terminal and JSON output
 - only emit a heuristic finding when the snapshot contains a concrete positive signal; represent missing counter-signals in the evidence wording instead of inventing certainty
+- when the signal is component-local or resource-local, compare the missing counter-signal in the same file instead of suppressing the finding app-wide
 - keep helper names descriptive enough that contributors can tell framework-specific inference from direct checks immediately
 - add at least one positive and one negative test so the heuristic does not become noisy by default
 

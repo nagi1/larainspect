@@ -169,59 +169,9 @@ func buildLivewireFrameworkHeuristicFindings(app model.LaravelApp) []model.Findi
 		))
 	}
 
-	fileUploadMatches := sourceMatchesForRule(app, "livewire.component.with_file_uploads")
-	uploadValidationMatches := sourceMatchesForRule(app, "livewire.component.upload_validation")
-	if len(fileUploadMatches) > 0 && len(uploadValidationMatches) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"livewire_upload_validation_missing_signal",
-			app,
-			model.SeverityMedium,
-			model.ConfidencePossible,
-			"Livewire upload component does not show obvious validation rules",
-			"File-upload components are easy to under-validate, which can lead to unsafe file types, oversized uploads, or risky storage behavior.",
-			"Review each Livewire upload action for MIME, extension, size, and storage validation before trusting it in production.",
-			fileUploadMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no validation or rules signal was found in the same scanned Livewire component"},
-			},
-		))
-	}
-
-	sensitivePropertyMatches := sourceMatchesForRule(app, "livewire.component.public_sensitive_property")
-	lockedPropertyMatches := sourceMatchesForRule(app, "livewire.component.locked_attribute")
-	if len(sensitivePropertyMatches) > 0 && len(lockedPropertyMatches) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"livewire_sensitive_public_property_unlocked",
-			app,
-			model.SeverityMedium,
-			model.ConfidencePossible,
-			"Livewire component exposes security-sensitive public properties without obvious locking",
-			"Mutable public properties such as tenant, role, or user identifiers are common tampering targets when component state crosses trust boundaries.",
-			"Review sensitive public properties, add Locked attributes where appropriate, and avoid trusting client-controlled identifiers without server-side authorization.",
-			sensitivePropertyMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no Locked attribute signal was found in the scanned component"},
-			},
-		))
-	}
-
-	mutatingComponentMatches := sourceMatchesForRule(app, "livewire.component.mutates_model_state")
-	authorizationMatches := sourceMatchesForRule(app, "livewire.component.authorizes_action")
-	if len(mutatingComponentMatches) > 0 && len(authorizationMatches) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"livewire_mutation_without_authorization_signal",
-			app,
-			model.SeverityMedium,
-			model.ConfidencePossible,
-			"Livewire component mutates model state without obvious authorization checks",
-			"State-changing Livewire actions can become privilege-escalation or tenant-breakout paths when authorization lives only in front-end assumptions.",
-			"Review mutating Livewire actions and add explicit policy or gate checks close to the write operation.",
-			mutatingComponentMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no authorize or Gate signal was found in the scanned component"},
-			},
-		))
-	}
+	findings = append(findings, buildLivewireUploadValidationFindings(app)...)
+	findings = append(findings, buildLivewireUnlockedPropertyFindings(app)...)
+	findings = append(findings, buildLivewireAuthorizationFindings(app)...)
 
 	return findings
 }
@@ -234,40 +184,8 @@ func buildFilamentFrameworkHeuristicFindings(app model.LaravelApp) []model.Findi
 	findings := []model.Finding{}
 
 	panelPathMatches := sourceMatchesForRule(app, "filament.panel.path.admin")
-	panelAuthMatches := sourceMatchesForRule(app, "filament.panel.auth_middleware")
-	if len(panelPathMatches) > 0 && len(panelAuthMatches) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"filament_panel_public_admin_path",
-			app,
-			model.SeverityHigh,
-			model.ConfidenceProbable,
-			"Filament panel appears to use a public /admin path without obvious extra auth middleware",
-			"Admin surfaces on common paths attract enumeration, brute-force, and credential-stuffing attempts and usually need tighter controls than default route groups.",
-			"Review the Filament panel path, add explicit auth middleware and access restrictions, and verify production-only guards such as MFA where supported.",
-			panelPathMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no explicit Filament auth middleware signal was found in the scanned panel files"},
-			},
-		))
-	}
-
-	filamentFileMatches := sourceMatchesForRule(app, "filament.file.detected")
-	policySignalMatches := sourceMatchesForRule(app, "filament.resource.policy_signal")
-	if len(filamentFileMatches) > 0 && len(policySignalMatches) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"filament_policy_signal_missing",
-			app,
-			model.SeverityMedium,
-			model.ConfidencePossible,
-			"Filament resources do not show obvious policy signals",
-			"Filament panels often wrap high-value data and admin actions, so weak or implicit authorization patterns are easy to miss during review.",
-			"Verify Filament resources and pages enforce policies or gates intentionally, even if the enforcement lives outside the resource class.",
-			filamentFileMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no obvious policy or authorization signal was found in the scanned Filament files"},
-			},
-		))
-	}
+	findings = append(findings, buildFilamentPanelAccessFindings(app, panelPathMatches)...)
+	findings = append(findings, buildFilamentPolicySignalFindings(app)...)
 
 	tenantFieldMatches := sourceMatchesForRule(app, "filament.resource.tenant_field")
 	tenantSignalMatches := sourceMatchesForRule(app, "filament.panel.tenant_signal")
@@ -287,21 +205,7 @@ func buildFilamentFrameworkHeuristicFindings(app model.LaravelApp) []model.Findi
 		))
 	}
 
-	if len(panelPathMatches) > 0 && len(sourceMatchesForRule(app, "filament.panel.mfa_signal")) == 0 {
-		findings = append(findings, buildHeuristicFindingForSourceMatches(
-			"filament_mfa_signal_missing",
-			app,
-			model.SeverityLow,
-			model.ConfidencePossible,
-			"Filament admin surface does not show obvious MFA-related signals",
-			"Admin panels often hold credential, user-management, and high-privilege actions that benefit from stronger authentication controls.",
-			"Confirm the production admin flow uses MFA or an equivalent second-factor control where the chosen auth stack supports it.",
-			panelPathMatches,
-			[]model.Evidence{
-				{Label: "inference", Detail: "no MFA or two-factor signal was found in the scanned Filament files"},
-			},
-		))
-	}
+	findings = append(findings, buildFilamentMFASignalFindings(app, panelPathMatches)...)
 
 	if sensitiveFieldMatches := sourceMatchesForRule(app, "filament.resource.sensitive_field"); len(sensitiveFieldMatches) > 0 {
 		findings = append(findings, buildHeuristicFindingForSourceMatches(
@@ -314,6 +218,166 @@ func buildFilamentFrameworkHeuristicFindings(app model.LaravelApp) []model.Findi
 			"Review sensitive Filament form and table fields, hide or redact what operators do not need, and require explicit authorization for privileged changes.",
 			sensitiveFieldMatches,
 			nil,
+		))
+	}
+
+	return findings
+}
+
+func buildLivewireUploadValidationFindings(app model.LaravelApp) []model.Finding {
+	findings := []model.Finding{}
+	fileUploadMatches := sourceMatchesForRule(app, "livewire.component.with_file_uploads")
+
+	for _, relativePath := range uniqueRelativePathsForMatches(fileUploadMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "livewire.component.upload_validation", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"livewire_upload_validation_missing_signal",
+			app,
+			model.SeverityMedium,
+			model.ConfidencePossible,
+			"Livewire upload component does not show obvious validation rules",
+			"File-upload components are easy to under-validate, which can lead to unsafe file types, oversized uploads, or risky storage behavior.",
+			"Review each Livewire upload action for MIME, extension, size, and storage validation before trusting it in production.",
+			sourceMatchesForRuleAtRelativePath(app, "livewire.component.with_file_uploads", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no validation or rules signal was found in the same scanned Livewire component"},
+			},
+		))
+	}
+
+	return findings
+}
+
+func buildLivewireUnlockedPropertyFindings(app model.LaravelApp) []model.Finding {
+	findings := []model.Finding{}
+	sensitivePropertyMatches := sourceMatchesForRule(app, "livewire.component.public_sensitive_property")
+
+	for _, relativePath := range uniqueRelativePathsForMatches(sensitivePropertyMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "livewire.component.locked_attribute", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"livewire_sensitive_public_property_unlocked",
+			app,
+			model.SeverityMedium,
+			model.ConfidencePossible,
+			"Livewire component exposes security-sensitive public properties without obvious locking",
+			"Mutable public properties such as tenant, role, or user identifiers are common tampering targets when component state crosses trust boundaries.",
+			"Review sensitive public properties, add Locked attributes where appropriate, and avoid trusting client-controlled identifiers without server-side authorization.",
+			sourceMatchesForRuleAtRelativePath(app, "livewire.component.public_sensitive_property", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no Locked attribute signal was found in the scanned component"},
+			},
+		))
+	}
+
+	return findings
+}
+
+func buildLivewireAuthorizationFindings(app model.LaravelApp) []model.Finding {
+	findings := []model.Finding{}
+	mutatingComponentMatches := sourceMatchesForRule(app, "livewire.component.mutates_model_state")
+
+	for _, relativePath := range uniqueRelativePathsForMatches(mutatingComponentMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "livewire.component.authorizes_action", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"livewire_mutation_without_authorization_signal",
+			app,
+			model.SeverityMedium,
+			model.ConfidencePossible,
+			"Livewire component mutates model state without obvious authorization checks",
+			"State-changing Livewire actions can become privilege-escalation or tenant-breakout paths when authorization lives only in front-end assumptions.",
+			"Review mutating Livewire actions and add explicit policy or gate checks close to the write operation.",
+			sourceMatchesForRuleAtRelativePath(app, "livewire.component.mutates_model_state", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no authorize or Gate signal was found in the scanned component"},
+			},
+		))
+	}
+
+	return findings
+}
+
+func buildFilamentPanelAccessFindings(app model.LaravelApp, panelPathMatches []model.SourceMatch) []model.Finding {
+	findings := []model.Finding{}
+
+	for _, relativePath := range uniqueRelativePathsForMatches(panelPathMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "filament.panel.auth_middleware", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"filament_panel_public_admin_path",
+			app,
+			model.SeverityHigh,
+			model.ConfidenceProbable,
+			"Filament panel appears to use a public /admin path without obvious extra auth middleware",
+			"Admin surfaces on common paths attract enumeration, brute-force, and credential-stuffing attempts and usually need tighter controls than default route groups.",
+			"Review the Filament panel path, add explicit auth middleware and access restrictions, and verify production-only guards such as MFA where supported.",
+			sourceMatchesForRuleAtRelativePath(app, "filament.panel.path.admin", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no explicit Filament auth middleware signal was found in the same scanned panel file"},
+			},
+		))
+	}
+
+	return findings
+}
+
+func buildFilamentPolicySignalFindings(app model.LaravelApp) []model.Finding {
+	findings := []model.Finding{}
+	resourceMatches := sourceMatchesForRule(app, "filament.resource.detected")
+
+	for _, relativePath := range uniqueRelativePathsForMatches(resourceMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "filament.resource.policy_signal", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"filament_policy_signal_missing",
+			app,
+			model.SeverityMedium,
+			model.ConfidencePossible,
+			"Filament resources do not show obvious policy signals",
+			"Filament panels often wrap high-value data and admin actions, so weak or implicit authorization patterns are easy to miss during review.",
+			"Verify Filament resources and pages enforce policies or gates intentionally, even if the enforcement lives outside the resource class.",
+			sourceMatchesForRuleAtRelativePath(app, "filament.resource.detected", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no obvious policy or authorization signal was found in the same scanned Filament resource"},
+			},
+		))
+	}
+
+	return findings
+}
+
+func buildFilamentMFASignalFindings(app model.LaravelApp, panelPathMatches []model.SourceMatch) []model.Finding {
+	findings := []model.Finding{}
+
+	for _, relativePath := range uniqueRelativePathsForMatches(panelPathMatches) {
+		if len(sourceMatchesForRuleAtRelativePath(app, "filament.panel.mfa_signal", relativePath)) != 0 {
+			continue
+		}
+
+		findings = append(findings, buildHeuristicFindingForSourceMatches(
+			"filament_mfa_signal_missing",
+			app,
+			model.SeverityLow,
+			model.ConfidencePossible,
+			"Filament admin surface does not show obvious MFA-related signals",
+			"Admin panels often hold credential, user-management, and high-privilege actions that benefit from stronger authentication controls.",
+			"Confirm the production admin flow uses MFA or an equivalent second-factor control where the chosen auth stack supports it.",
+			sourceMatchesForRuleAtRelativePath(app, "filament.panel.path.admin", relativePath),
+			[]model.Evidence{
+				{Label: "inference", Detail: "no MFA or two-factor signal was found in the same scanned Filament panel file"},
+			},
 		))
 	}
 

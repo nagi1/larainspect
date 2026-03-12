@@ -359,6 +359,15 @@ func detectFilamentFrameworkSourceMatches(relativePath string, fileContents stri
 		Detail:       "detected a Filament panel or resource file",
 	})
 
+	if looksLikeFilamentResourceFile(relativePath) {
+		matches = append(matches, model.SourceMatch{
+			RuleID:       "filament.resource.detected",
+			RelativePath: relativePath,
+			Line:         1,
+			Detail:       "detected a Filament resource file",
+		})
+	}
+
 	matches = appendSourceMatchIfContainsAny(matches, relativePath, fileContents, "filament.panel.path.admin", "uses the common /admin Filament panel path", []string{
 		"->path('admin')",
 		`->path("admin")`,
@@ -412,6 +421,10 @@ func looksLikeFilamentFile(relativePath string, fileContents string) bool {
 	return strings.HasPrefix(relativePath, "app/Filament/") ||
 		strings.Contains(fileContents, "Filament\\") ||
 		strings.Contains(relativePath, "Filament")
+}
+
+func looksLikeFilamentResourceFile(relativePath string) bool {
+	return strings.Contains(relativePath, "/Resources/") || strings.HasSuffix(relativePath, "Resource.php")
 }
 
 func isLikelySecuritySensitiveLivewireProperty(propertyName string) bool {

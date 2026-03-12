@@ -157,9 +157,81 @@ func TestFrameworkHeuristicsCheckLowersPackageConfidenceForDeclaredOnlyPackages(
 	}
 }
 
+func TestFrameworkHeuristicsCheckKeepsUnsafeLivewireComponentVisibleWhenAnotherComponentIsSafe(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Packages = []model.PackageRecord{{Name: "livewire/livewire", Version: "v3.5.1", Source: "composer.lock"}}
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "livewire.component.with_file_uploads", RelativePath: "app/Livewire/SafeUpload.php", Line: 8, Detail: "uses the WithFileUploads trait"},
+		{RuleID: "livewire.component.upload_validation", RelativePath: "app/Livewire/SafeUpload.php", Line: 12, Detail: "shows upload validation or rules near the component"},
+		{RuleID: "livewire.component.with_file_uploads", RelativePath: "app/Livewire/RiskyUpload.php", Line: 8, Detail: "uses the WithFileUploads trait"},
+	}
+
+	result, err := checks.FrameworkHeuristicsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected one finding for the risky component only, got %+v", result.Findings)
+	}
+
+	evidence := result.Findings[0].Evidence
+	if !evidenceContains(evidence, "/var/www/shop/app/Livewire/RiskyUpload.php") {
+		t.Fatalf("expected risky component evidence, got %+v", evidence)
+	}
+	if evidenceContains(evidence, "/var/www/shop/app/Livewire/SafeUpload.php") {
+		t.Fatalf("did not expect safe component evidence, got %+v", evidence)
+	}
+}
+
+func TestFrameworkHeuristicsCheckKeepsUnsafeFilamentResourceVisibleWhenAnotherResourceHasPolicySignals(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Packages = []model.PackageRecord{{Name: "filament/filament", Version: "v3.2.0", Source: "composer.lock"}}
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "filament.resource.detected", RelativePath: "app/Filament/Resources/UserResource.php", Line: 1, Detail: "detected a Filament resource file"},
+		{RuleID: "filament.resource.policy_signal", RelativePath: "app/Filament/Resources/UserResource.php", Line: 18, Detail: "shows a policy or authorization signal in a Filament resource"},
+		{RuleID: "filament.resource.detected", RelativePath: "app/Filament/Resources/InvoiceResource.php", Line: 1, Detail: "detected a Filament resource file"},
+	}
+
+	result, err := checks.FrameworkHeuristicsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected one finding for the risky resource only, got %+v", result.Findings)
+	}
+
+	evidence := result.Findings[0].Evidence
+	if !evidenceContains(evidence, "/var/www/shop/app/Filament/Resources/InvoiceResource.php") {
+		t.Fatalf("expected risky resource evidence, got %+v", evidence)
+	}
+	if evidenceContains(evidence, "/var/www/shop/app/Filament/Resources/UserResource.php") {
+		t.Fatalf("did not expect safe resource evidence, got %+v", evidence)
+	}
+}
+
 func findingTitleExists(findings []model.Finding, title string) bool {
 	for _, finding := range findings {
 		if finding.Title == title {
+			return true
+		}
+	}
+
+	return false
+}
+
+func evidenceContains(evidence []model.Evidence, detail string) bool {
+	for _, item := range evidence {
+		if item.Detail == detail {
 			return true
 		}
 	}
