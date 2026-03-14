@@ -329,8 +329,11 @@ func TestParseAuditConfigSupportsWorkerLimit(t *testing.T) {
 func TestExecuteAuditWithConfigJSONFormat(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	appPath := createLaravelAppFixture(t)
 
 	exitCode := executeAuditWithConfig(context.Background(), strings.NewReader(""), &stdout, &stderr, model.AuditConfig{
+		Scope:     model.ScanScopeApp,
+		AppPath:   appPath,
 		Format:    model.OutputFormatJSON,
 		Verbosity: model.VerbosityQuiet,
 	})

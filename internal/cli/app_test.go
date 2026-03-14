@@ -78,11 +78,12 @@ func TestControlsCommandRendersJSONOutput(t *testing.T) {
 }
 
 func TestAppRendersJSONAuditOutput(t *testing.T) {
+	appPath := createLaravelAppFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--format", "json"})
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--format", "json", "--scope", "app", "--app-path", appPath})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected exit code 0, got %d stderr=%q", exitCode, stderr.String())
 	}
@@ -164,11 +165,12 @@ func TestInteractiveAuditPromptsForAppPath(t *testing.T) {
 }
 
 func TestVerboseTerminalAuditShowsOnboardingAndNextSteps(t *testing.T) {
+	appPath := createLaravelAppFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--verbosity", "verbose"})
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--verbosity", "verbose", "--scope", "app", "--app-path", appPath})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
 	}
@@ -190,11 +192,12 @@ func TestVerboseTerminalAuditShowsOnboardingAndNextSteps(t *testing.T) {
 }
 
 func TestQuietTerminalAuditSuppressesExtraGuidance(t *testing.T) {
+	appPath := createLaravelAppFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--verbosity", "quiet"})
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
 	}
@@ -238,6 +241,7 @@ func TestAuditReportsUnknownForNonLaravelRequestedAppPath(t *testing.T) {
 }
 
 func TestTerminalAuditCanAlsoWriteArtifacts(t *testing.T) {
+	appPath := createLaravelAppFixture(t)
 
 	reportPath := filepath.Join(t.TempDir(), "larainspect-report.json")
 	markdownPath := filepath.Join(t.TempDir(), "larainspect-report.md")
@@ -246,6 +250,8 @@ func TestTerminalAuditCanAlsoWriteArtifacts(t *testing.T) {
 
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{
 		"audit",
+		"--scope", "app",
+		"--app-path", appPath,
 		"--report-json-path", reportPath,
 		"--report-markdown-path", markdownPath,
 	})
@@ -281,11 +287,12 @@ func TestTerminalAuditCanAlsoWriteArtifacts(t *testing.T) {
 }
 
 func TestAppRendersMarkdownAuditOutput(t *testing.T) {
+	appPath := createLaravelAppFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--format", "markdown"})
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--format", "markdown", "--scope", "app", "--app-path", appPath})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected exit code 0, got %d stderr=%q", exitCode, stderr.String())
 	}

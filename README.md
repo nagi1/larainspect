@@ -1,5 +1,10 @@
 # larainspect
 
+[![Release](https://img.shields.io/github/v/release/nagi1/larainspect?display_name=tag)](https://github.com/nagi1/larainspect/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/nagi1/larainspect/ci.yml?branch=master&label=ci)](https://github.com/nagi1/larainspect/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8)](https://go.dev/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-222222)](https://github.com/nagi1/larainspect/releases)
+
 **Read-only security audit CLI for Laravel servers.** Inspects your VPS in seconds — never writes, never mutates, safe on production.
 
 Maintained by Ahmed Nagi (`nagi1`) • X: `@nagiworks`
@@ -16,6 +21,24 @@ That's it. One command scans your server's filesystem permissions, Nginx config,
 
 Full install, upgrade, verify, and uninstall instructions live in [docs/install.md](/Users/nagi/code/larainspect/docs/install.md).
 
+### One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | sh
+```
+
+The installer auto-detects macOS vs Linux, resolves the right archive for your CPU, verifies `checksums.txt`, and installs `larainspect` into `/usr/local/bin`.
+
+Useful overrides:
+
+```bash
+# install a specific release
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | VERSION=v0.1.0 sh
+
+# install without sudo into a user bin dir
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+```
+
 ### Prebuilt release binaries
 
 Tagged releases publish prebuilt archives for:
@@ -28,7 +51,7 @@ Tagged releases publish prebuilt archives for:
 
 Latest-download asset names are stable so users can rely on predictable install commands.
 
-Examples:
+Manual examples:
 
 ```bash
 # macOS Apple Silicon
@@ -52,15 +75,6 @@ larainspect version
 go install github.com/nagi1/larainspect/cmd/larainspect@latest
 ```
 
-### Build locally
-
-```bash
-git clone https://github.com/nagi1/larainspect.git
-cd larainspect
-go build -o larainspect ./cmd/larainspect
-sudo mv larainspect /usr/local/bin/
-```
-
 Verify it works:
 
 ```bash
@@ -78,6 +92,20 @@ X: `@nagiworks`
 ## Release
 
 Maintainer/operator release instructions live in [docs/releasing.md](/Users/nagi/code/larainspect/docs/releasing.md).
+
+Fast path:
+
+```bash
+./scripts/release.sh v0.1.0
+```
+
+That runs the test suite, validates `.goreleaser.yml`, creates an annotated tag, and pushes it to GitHub so the release workflow publishes the archives.
+
+For a local dry run of the packaging flow:
+
+```bash
+./scripts/release.sh --snapshot
+```
 
 ---
 

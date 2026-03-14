@@ -14,17 +14,47 @@ Normal pushes should validate code. Only tags should publish official releases.
 
 ## Release Steps
 
+## Fast Path
+
+From the repository root:
+
+```bash
+./scripts/release.sh v0.1.0
+```
+
+That command:
+
+- runs `go test ./...`
+- runs `go run github.com/goreleaser/goreleaser/v2@latest check`
+- creates an annotated SemVer tag
+- pushes the tag to `origin`
+- triggers the GitHub Release workflow automatically
+
+To test the packaging flow locally without publishing anything:
+
+```bash
+./scripts/release.sh --snapshot
+```
+
+## Release Steps
+
 1. Ensure CI is green on `master`.
 2. Confirm install docs in [docs/install.md](/Users/nagi/code/larainspect/docs/install.md) still match the current release asset names.
-3. Create and push a tag:
+3. Run the release helper:
+
+```bash
+./scripts/release.sh v0.1.0
+```
+
+4. If you prefer the manual path, create and push a tag yourself:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-4. Open the GitHub Actions release workflow and watch it complete.
-5. Verify the GitHub Release contains:
+5. Open the GitHub Actions release workflow and watch it complete.
+6. Verify the GitHub Release contains:
 
 - macOS amd64 archive
 - macOS arm64 archive
@@ -33,8 +63,8 @@ git push origin v0.1.0
 - Linux armv7 archive
 - `checksums.txt`
 
-6. Verify provenance attestation exists for the produced artifacts.
-7. Run the install commands from [docs/install.md](/Users/nagi/code/larainspect/docs/install.md) on representative systems.
+7. Verify provenance attestation exists for the produced artifacts.
+8. Run the install commands from [docs/install.md](/Users/nagi/code/larainspect/docs/install.md) on representative systems.
 
 ## What The Release Workflow Does
 

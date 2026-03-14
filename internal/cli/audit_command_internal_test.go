@@ -80,6 +80,7 @@ func TestExecuteAuditWithConfigScopeAppNoPath(t *testing.T) {
 
 func TestNewAuditCommandRunESuccess(t *testing.T) {
 	t.Parallel()
+	appPath := createLaravelAppFixture(t)
 	app := App{
 		stdin:  strings.NewReader(""),
 		stdout: io.Discard,
@@ -88,10 +89,61 @@ func TestNewAuditCommandRunESuccess(t *testing.T) {
 	cmd := app.newAuditCommand(context.Background())
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	cmd.SetArgs([]string{"--format", "json", "--verbosity", "quiet"})
+	cmd.SetArgs([]string{"--format", "json", "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
+func createLaravelAppFixture(t *testing.T) string {
+	t.Helper()
+
+	rootPath := t.TempDir()
+	createFixtureDir(t, filepath.Join(rootPath, "app"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "bootstrap"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "bootstrap/cache"), 0o770)
+	createFixtureDir(t, filepath.Join(rootPath, "config"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "database"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "public"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "resources"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "routes"), 0o750)
+	createFixtureDir(t, filepath.Join(rootPath, "storage"), 0o770)
+	createFixtureDir(t, filepath.Join(rootPath, "vendor"), 0o750)
+
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "artisan"), "#!/usr/bin/env php\n", 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "bootstrap/app.php"), "<?php return app();\n", 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "bootstrap/cache/config.php"), "<?php return ['app' => ['debug' => false]];\n", 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "config/app.php"), "<?php return ['name' => 'Demo'];\n", 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "public/index.php"), "<?php require __DIR__.'/../vendor/autoload.php';\n", 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "composer.json"), `{"name":"acme/shop","require":{"laravel/framework":"^11.0"}}`, 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, "composer.lock"), `{"packages":[{"name":"laravel/framework","version":"v11.0.0"}]}`, 0o640)
+	writeFixtureFileWithMode(t, filepath.Join(rootPath, ".env"), "APP_KEY=base64:dGVzdHRlc3R0ZXN0dGVzdA==\nAPP_DEBUG=false\n", 0o640)
+
+	resolvedRootPath, err := filepath.EvalSymlinks(rootPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q) error = %v", rootPath, err)
+	}
+
+	return resolvedRootPath
+}
+
+func writeFixtureFileWithMode(t *testing.T, path string, contents string, mode os.FileMode) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(contents), mode); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+}
+
+func createFixtureDir(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+
+	if err := os.MkdirAll(path, mode); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", path, err)
 	}
 }
 

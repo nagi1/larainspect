@@ -4,6 +4,30 @@ larainspect is designed to be easy to install on macOS and Linux without buildin
 
 Maintained by Ahmed Nagi (`nagi1`) • X: `@nagiworks`
 
+## Fastest Path
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | sh
+```
+
+What the installer does:
+
+- detects macOS vs Linux automatically
+- detects `x86_64`, `arm64`, and `armv7`
+- downloads the matching release archive
+- verifies the archive against `checksums.txt`
+- installs `larainspect` into `/usr/local/bin` unless you override `INSTALL_DIR`
+
+Common overrides:
+
+```bash
+# install a specific version instead of the latest release
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | VERSION=v0.1.0 sh
+
+# install into a user-owned bin dir
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+```
+
 ## Choose Path
 
 Use the prebuilt binary that matches your platform:
@@ -17,6 +41,10 @@ Use the prebuilt binary that matches your platform:
 All commands below install to `/usr/local/bin`. If you prefer a user-only install, replace that with `~/.local/bin` and make sure it is in your `PATH`.
 
 ## Install
+
+If you want the installer to choose for you, use the one-line command above.
+
+If you prefer to download a specific archive manually, use the commands below.
 
 ### macOS Apple Silicon
 
@@ -68,7 +96,13 @@ Expected output includes:
 
 ## Upgrade
 
-Upgrade by running the same install command again for your platform. The new binary will replace the existing one in place.
+Upgrade by re-running the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | sh
+```
+
+Or re-run the manual install command for your platform. The new binary will replace the existing one in place.
 
 After upgrading:
 
@@ -110,4 +144,13 @@ If you prefer building from source:
 
 ```bash
 go install github.com/nagi1/larainspect/cmd/larainspect@latest
+```
+
+To install the just-built binary manually:
+
+```bash
+git clone https://github.com/nagi1/larainspect.git
+cd larainspect
+go build -o larainspect ./cmd/larainspect
+sudo install -m 0755 larainspect /usr/local/bin/larainspect
 ```
