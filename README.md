@@ -2,6 +2,8 @@
 
 **Read-only security audit CLI for Laravel servers.** Inspects your VPS in seconds — never writes, never mutates, safe on production.
 
+Maintained by Ahmed Nagi (`nagi1`) • X: `@nagiworks`
+
 ```
 larainspect audit
 ```
@@ -11,6 +13,38 @@ That's it. One command scans your server's filesystem permissions, Nginx config,
 ---
 
 ## Install
+
+Full install, upgrade, verify, and uninstall instructions live in [docs/install.md](/Users/nagi/code/larainspect/docs/install.md).
+
+### Prebuilt release binaries
+
+Tagged releases publish prebuilt archives for:
+
+- macOS Apple Silicon (`darwin_arm64`)
+- macOS Intel (`darwin_amd64`)
+- Linux x86_64 (`linux_amd64`)
+- Linux ARM64 (`linux_arm64`)
+- Linux ARMv7 (`linux_armv7`)
+
+Latest-download asset names are stable so users can rely on predictable install commands.
+
+Examples:
+
+```bash
+# macOS Apple Silicon
+curl -fsSL https://github.com/nagi1/larainspect/releases/latest/download/larainspect_macOS_arm64.tar.gz | tar -xz
+sudo install -m 0755 larainspect /usr/local/bin/larainspect
+
+# Linux x86_64
+curl -fsSL https://github.com/nagi1/larainspect/releases/latest/download/larainspect_Linux_x86_64.tar.gz | tar -xz
+sudo install -m 0755 larainspect /usr/local/bin/larainspect
+```
+
+Verify it works:
+
+```bash
+larainspect version
+```
 
 ### From source (requires Go 1.23+)
 
@@ -32,6 +66,18 @@ Verify it works:
 ```bash
 larainspect version
 ```
+
+Homebrew tap automation is the next package-manager priority after the first public release is cut and verified.
+
+## Maintainer
+
+Ahmed Nagi (`nagi1`)
+
+X: `@nagiworks`
+
+## Release
+
+Maintainer/operator release instructions live in [docs/releasing.md](/Users/nagi/code/larainspect/docs/releasing.md).
 
 ---
 

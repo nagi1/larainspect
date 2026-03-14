@@ -336,6 +336,50 @@ func TestAppPrintsVersionFlag(t *testing.T) {
 	}
 }
 
+func TestAppPrintsVersionMetadataWhenPresent(t *testing.T) {
+	originalVersion := cli.Version
+	originalCommit := cli.Commit
+	originalDate := cli.Date
+
+	t.Cleanup(func() {
+		cli.Version = originalVersion
+		cli.Commit = originalCommit
+		cli.Date = originalDate
+	})
+
+	cli.Version = "v1.2.3"
+	cli.Commit = "abc1234"
+	cli.Date = "2026-03-14T12:00:00Z"
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"version"})
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "larainspect v1.2.3") {
+		t.Fatalf("expected semantic version in output, got %q", output)
+	}
+	if !strings.Contains(output, "maintainer: Ahmed Nagi (nagi1)") {
+		t.Fatalf("expected maintainer in output, got %q", output)
+	}
+	if !strings.Contains(output, "x: @nagiworks") {
+		t.Fatalf("expected X handle in output, got %q", output)
+	}
+	if !strings.Contains(output, "commit: abc1234") {
+		t.Fatalf("expected commit in output, got %q", output)
+	}
+	if !strings.Contains(output, "built: 2026-03-14T12:00:00Z") {
+		t.Fatalf("expected build date in output, got %q", output)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestAppPrintsRootHelpForHelpCommand(t *testing.T) {
 
 	var stdout bytes.Buffer

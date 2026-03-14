@@ -1,0 +1,64 @@
+version: 2
+
+project_name: larainspect
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: larainspect
+    main: ./cmd/larainspect
+    binary: larainspect
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/nagi1/larainspect/internal/cli.Version={{ .Version }}
+        -X github.com/nagi1/larainspect/internal/cli.Commit={{ .Commit }}
+        -X github.com/nagi1/larainspect/internal/cli.Date={{ .CommitDate }}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - id: release-archives
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- if eq .Os "darwin" }}macOS{{- else if eq .Os "linux" }}Linux{{- else }}{{ .Os }}{{- end }}_
+      {{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "arm64" }}arm64{{- else if eq .Arch "arm" }}armv{{ .Arm }}{{- else }}{{ .Arch }}{{- end }}
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  use: github
+
+release:
+  draft: false
+  prerelease: auto
+  header: |
+    Maintained and released by Ahmed Nagi (nagi1).
+
+    X: @nagiworks
+  footer: |
+    Thanks for using larainspect.
+
+    Maintainer signature: Ahmed Nagi (nagi1) • X: @nagiworks

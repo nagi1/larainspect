@@ -55,6 +55,14 @@ func (app App) printRootHelp(writer io.Writer) {
 
 func (app App) printVersion(writer io.Writer) {
 	fmt.Fprintf(writer, "larainspect %s\n", Version)
+	fmt.Fprintf(writer, "maintainer: %s (%s)\n", MaintainerName, MaintainerHandle)
+	fmt.Fprintf(writer, "x: %s\n", MaintainerX)
+	if Commit != "" {
+		fmt.Fprintf(writer, "commit: %s\n", Commit)
+	}
+	if Date != "" {
+		fmt.Fprintf(writer, "built: %s\n", Date)
+	}
 }
 
 func (app App) newRootCommand(ctx context.Context) *cobra.Command {
@@ -77,7 +85,7 @@ func (app App) newRootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
-	rootCmd.Flags().BoolVar(&versionRequested, "version", false, "print version")
+	rootCmd.Flags().BoolVar(&versionRequested, "version", false, "print version information")
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		app.printRootHelp(cmd.OutOrStdout())
 	})
@@ -95,7 +103,7 @@ func (app App) newRootCommand(ctx context.Context) *cobra.Command {
 func (app App) newVersionCommand() *cobra.Command {
 	versionCmd := &cobra.Command{
 		Use:           "version",
-		Short:         "Print the development version",
+		Short:         "Print version information",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
