@@ -81,6 +81,7 @@ func TestExecuteAuditWithConfigScopeAppNoPath(t *testing.T) {
 func TestNewAuditCommandRunESuccess(t *testing.T) {
 	t.Parallel()
 	appPath := createLaravelAppFixture(t)
+	configPath := createDeterministicAuditConfigFile(t)
 	app := App{
 		stdin:  strings.NewReader(""),
 		stdout: io.Discard,
@@ -89,7 +90,7 @@ func TestNewAuditCommandRunESuccess(t *testing.T) {
 	cmd := app.newAuditCommand(context.Background())
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	cmd.SetArgs([]string{"--format", "json", "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
+	cmd.SetArgs([]string{"--config", configPath, "--format", "json", "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -126,6 +127,17 @@ func createLaravelAppFixture(t *testing.T) string {
 	}
 
 	return resolvedRootPath
+}
+
+func createDeterministicAuditConfigFile(t *testing.T) string {
+	t.Helper()
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.yaml")
+	if err := os.WriteFile(configPath, []byte("version: 1\nswitches:\n  discover_nginx: false\n  discover_php_fpm: false\n  discover_supervisor: false\n  discover_systemd: false\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", configPath, err)
+	}
+
+	return configPath
 }
 
 func writeFixtureFileWithMode(t *testing.T, path string, contents string, mode os.FileMode) {

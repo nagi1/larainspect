@@ -57,11 +57,12 @@ func TestCommandErrorWriteWithoutWrappedError(t *testing.T) {
 
 func TestRunAuditCommandWrapper(t *testing.T) {
 	appPath := createLaravelAppFixture(t)
+	configPath := createDeterministicAuditConfigFile(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := runAuditCommand(context.Background(), &stdout, &stderr, []string{"--format", "json", "--scope", "app", "--app-path", appPath})
+	exitCode := runAuditCommand(context.Background(), &stdout, &stderr, []string{"--config", configPath, "--format", "json", "--scope", "app", "--app-path", appPath})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
 	}

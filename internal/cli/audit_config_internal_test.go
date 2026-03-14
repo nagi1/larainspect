@@ -336,6 +336,14 @@ func TestExecuteAuditWithConfigJSONFormat(t *testing.T) {
 		AppPath:   appPath,
 		Format:    model.OutputFormatJSON,
 		Verbosity: model.VerbosityQuiet,
+		Profile: model.HostProfile{
+			Switches: model.DiscoverySwitches{
+				DiscoverNginx:      false,
+				DiscoverPHPFPM:     false,
+				DiscoverSupervisor: false,
+				DiscoverSystemd:    false,
+			},
+		},
 	})
 	if exitCode != int(model.ExitCodeClean) {
 		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
