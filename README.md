@@ -7,14 +7,6 @@
 
 **Read-only security audit CLI for Laravel servers.** Inspects your VPS in seconds — never writes, never mutates, safe on production.
 
-Maintained by Ahmed Nagi (`nagi1`) • X: `@nagiworks`
-
-```
-larainspect audit
-```
-
-That's it. One command scans your server's filesystem permissions, Nginx config, PHP-FPM pools, cron jobs, queue workers, and your Laravel app source for security misconfigurations — then gives you a clear, prioritized report.
-
 ---
 
 ## Install
@@ -83,29 +75,15 @@ larainspect version
 
 Homebrew tap automation is the next package-manager priority after the first public release is cut and verified.
 
-## Maintainer
+---
 
-Ahmed Nagi (`nagi1`)
-
-X: `@nagiworks`
-
-## Release
-
-Maintainer/operator release instructions live in [docs/releasing.md](/Users/nagi/code/larainspect/docs/releasing.md).
-
-Fast path:
+## Quick start
 
 ```bash
-./scripts/release.sh v0.1.0
+larainspect audit
 ```
 
-That runs the test suite, validates `.goreleaser.yml`, creates an annotated tag, and pushes it to GitHub so the release workflow publishes the archives.
-
-For a local dry run of the packaging flow:
-
-```bash
-./scripts/release.sh --snapshot
-```
+One command scans your server's filesystem permissions, Nginx config, PHP-FPM pools, cron jobs, queue workers, and your Laravel app source for security misconfigurations — then gives you a clear, prioritized report.
 
 ---
 
@@ -318,6 +296,30 @@ Planned work to expand coverage, improve usability, and make larainspect easier 
 - [ ] Add first-class package coverage for Laravel Pulse
 - [ ] Expand framework and ecosystem heuristics for more Laravel deployment patterns and admin stacks
 - [ ] Keep iterating on new checks and workflows based on real audit results, common Laravel hosting failures, and contributor feedback
+
+---
+
+## Maintainer
+
+Ahmed Nagi (`nagi1`) — X: [@nagiworks](https://x.com/nagiworks)
+
+## Release
+
+Release instructions live in [docs/releasing.md](docs/releasing.md).
+
+Fast path:
+
+```bash
+./scripts/release.sh v0.1.0
+```
+
+That runs the test suite, validates `.goreleaser.yml`, creates an annotated tag, and pushes it to GitHub so the release workflow publishes the archives.
+
+For a local dry run:
+
+```bash
+./scripts/release.sh --snapshot
+```
 
 ## License
 
