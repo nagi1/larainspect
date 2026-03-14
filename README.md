@@ -223,6 +223,28 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for package boundaries, testing strategy,
 - [CLI UX guide](docs/cli-ux-and-accessibility.md)
 - [Security checklist](docs/security-checklist.md)
 
+## Roadmap
+
+Planned work to expand coverage, improve usability, and make larainspect easier to validate in real-world Laravel environments:
+
+- [ ] Build comprehensive contributing guide with development setup, testing workflows, and contribution guidelines
+- [ ] Write comprehensive project documentation covering installation, upgrade paths, usage patterns, CI integration, and troubleshooting
+- [ ] Add CI build pipeline with automated release workflows
+- [ ] Build a project landing page and homepage for better discoverability
+- [ ] Create an introduction video demonstrating the tool's usage and value
+- [ ] Add a vulnerable demo Laravel project for end-to-end testing and live examples
+- [ ] Include intentionally vulnerable Nginx and PHP-FPM configurations in the demo environment
+- [ ] Add an HTML report format for shareable audit output
+- [ ] Add richer remediation guidance per finding with concrete fix steps
+- [ ] Enhance the README with more examples, screenshots, and user guides
+- [ ] Add CI-oriented output formats such as SARIF or JUnit where they provide downstream value
+- [ ] Add report diffing and baseline comparison workflows for recurring audits
+- [ ] Add first-class package coverage for Laravel Horizon
+- [ ] Add first-class package coverage for Laravel Telescope
+- [ ] Add first-class package coverage for Laravel Pulse
+- [ ] Expand framework and ecosystem heuristics for more Laravel deployment patterns and admin stacks
+- [ ] Keep iterating on new checks and workflows based on real audit results, common Laravel hosting failures, and contributor feedback
+
 ## License
 
 MIT
