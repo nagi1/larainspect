@@ -12,8 +12,6 @@ Maintainer: Ahmed Nagi (`nagi1`) • X: `@nagiworks`
 
 Normal pushes should validate code. Only tags should publish official releases.
 
-## Release Steps
-
 ## Fast Path
 
 From the repository root:

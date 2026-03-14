@@ -54,6 +54,8 @@ func (app App) printRootHelp(writer io.Writer) {
 }
 
 func (app App) printVersion(writer io.Writer) {
+	fmt.Fprintln(writer, ux.Banner())
+	fmt.Fprintln(writer)
 	fmt.Fprintf(writer, "larainspect %s\n", Version)
 	fmt.Fprintf(writer, "maintainer: %s (%s)\n", MaintainerName, MaintainerHandle)
 	fmt.Fprintf(writer, "x: %s\n", MaintainerX)

@@ -10,6 +10,7 @@ func TestRootHelp(t *testing.T) {
 
 	help := RootHelp()
 	for _, want := range []string{
+		Banner(),
 		"Read-only Laravel VPS auditor for operators under pressure.",
 		"Safety promises:",
 		"larainspect audit --interactive",

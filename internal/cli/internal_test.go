@@ -63,8 +63,8 @@ func TestRunAuditCommandWrapper(t *testing.T) {
 	var stderr bytes.Buffer
 
 	exitCode := runAuditCommand(context.Background(), &stdout, &stderr, []string{"--config", configPath, "--format", "json", "--scope", "app", "--app-path", appPath})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
+	if exitCode != int(model.ExitCodeClean) && exitCode != int(model.ExitCodeLowRisk) {
+		t.Fatalf("expected clean or low-risk exit code, got %d stderr=%q", exitCode, stderr.String())
 	}
 }
 

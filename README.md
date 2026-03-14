@@ -43,11 +43,11 @@ curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh
 
 Tagged releases publish prebuilt archives for:
 
-- macOS Apple Silicon (`darwin_arm64`)
-- macOS Intel (`darwin_amd64`)
-- Linux x86_64 (`linux_amd64`)
-- Linux ARM64 (`linux_arm64`)
-- Linux ARMv7 (`linux_armv7`)
+- macOS Apple Silicon (`larainspect_macOS_arm64.tar.gz`)
+- macOS Intel (`larainspect_macOS_x86_64.tar.gz`)
+- Linux x86_64 (`larainspect_Linux_x86_64.tar.gz`)
+- Linux ARM64 (`larainspect_Linux_arm64.tar.gz`)
+- Linux ARMv7 (`larainspect_Linux_armv7.tar.gz`)
 
 Latest-download asset names are stable so users can rely on predictable install commands.
 
@@ -69,7 +69,7 @@ Verify it works:
 larainspect version
 ```
 
-### From source (requires Go 1.23+)
+### From source (requires Go 1.25+)
 
 ```bash
 go install github.com/nagi1/larainspect/cmd/larainspect@latest

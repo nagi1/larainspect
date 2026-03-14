@@ -1,7 +1,15 @@
 package ux
 
+import bannerart "github.com/nagi1/larainspect/art"
+
+func Banner() string {
+	return bannerart.Banner()
+}
+
 func RootHelp() string {
-	return `larainspect
+	return Banner() + `
+
+larainspect
 
 Read-only Laravel VPS auditor for operators under pressure.
 

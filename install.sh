@@ -9,6 +9,31 @@ INSTALL_DIR=${INSTALL_DIR:-/usr/local/bin}
 VERSION=${VERSION:-latest}
 BASE_URL="https://github.com/$OWNER/$REPO/releases"
 
+usage() {
+  cat <<'EOF'
+Usage:
+  sh install.sh
+
+Environment overrides:
+  VERSION=latest            Install the latest release (default)
+  VERSION=v0.1.0            Install a specific release tag
+  INSTALL_DIR=/custom/bin   Change the install destination
+
+Examples:
+  curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | VERSION=v0.1.0 sh
+  curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+EOF
+}
+
+print_banner() {
+  cat <<'EOF'
+▄▄     ▄▄▄  ▄▄▄▄   ▄▄▄  ▄▄ ▄▄  ▄▄  ▄▄▄▄ ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄ ▄▄▄▄▄▄
+██    ██▀██ ██▄█▄ ██▀██ ██ ███▄██ ███▄▄ ██▄█▀ ██▄▄  ██▀▀▀   ██
+██▄▄▄ ██▀██ ██ ██ ██▀██ ██ ██ ▀██ ▄▄██▀ ██    ██▄▄▄ ▀████   ██
+EOF
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "error: missing required command: $1" >&2
@@ -107,8 +132,9 @@ pick_release_base() {
 install_binary() {
   source_binary=$1
   target_binary="$INSTALL_DIR/$BIN_NAME"
+  install_parent=$(dirname "$INSTALL_DIR")
 
-  if [ -w "$INSTALL_DIR" ] || [ ! -e "$INSTALL_DIR" ] && [ -w "$(dirname "$INSTALL_DIR")" ]; then
+  if [ -w "$INSTALL_DIR" ] || { [ ! -e "$INSTALL_DIR" ] && [ -w "$install_parent" ]; }; then
     install -d "$INSTALL_DIR"
     install -m 0755 "$source_binary" "$target_binary"
     return
@@ -124,6 +150,13 @@ require_command install
 require_command uname
 require_command mktemp
 
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
 detect_platform
 pick_release_base
 
@@ -136,6 +169,9 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+print_banner
+echo
 
 echo ">>> downloading $ASSET_NAME"
 download_file "$RELEASE_BASE/$ASSET_NAME" "$ARCHIVE_PATH"
@@ -167,6 +203,8 @@ echo ">>> installing to $INSTALL_DIR/$BIN_NAME"
 install_binary "$TMP_DIR/$BIN_NAME"
 
 cat <<EOF
+
+$BIN_NAME is ready.
 
 $BIN_NAME installed successfully.
 

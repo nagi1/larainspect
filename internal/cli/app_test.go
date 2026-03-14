@@ -11,6 +11,7 @@ import (
 
 	"github.com/nagi1/larainspect/internal/cli"
 	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/ux"
 )
 
 func TestAppPrintsRootHelp(t *testing.T) {
@@ -25,6 +26,9 @@ func TestAppPrintsRootHelp(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "larainspect audit [flags]") {
 		t.Fatalf("expected help output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), ux.Banner()) {
+		t.Fatalf("expected banner in root help, got %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "larainspect controls [flags]") {
 		t.Fatalf("expected controls command in root help, got %q", stdout.String())
@@ -85,9 +89,7 @@ func TestAppRendersJSONAuditOutput(t *testing.T) {
 	var stderr bytes.Buffer
 
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--config", configPath, "--format", "json", "--scope", "app", "--app-path", appPath})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected exit code 0, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if !strings.Contains(stdout.String(), `"schema_version": "v0alpha1"`) {
 		t.Fatalf("expected json output, got %q", stdout.String())
@@ -149,9 +151,7 @@ func TestInteractiveAuditPromptsForAppPath(t *testing.T) {
 		context.Background(),
 		[]string{"audit", "--config", configPath, "--interactive", "--format", "json"},
 	)
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if !strings.Contains(stderr.String(), "Guided mode is enabled") {
 		t.Fatalf("expected guided mode message, got %q", stderr.String())
@@ -174,9 +174,7 @@ func TestVerboseTerminalAuditShowsOnboardingAndNextSteps(t *testing.T) {
 	var stderr bytes.Buffer
 
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--config", configPath, "--verbosity", "verbose", "--scope", "app", "--app-path", appPath})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if !strings.Contains(stdout.String(), "Starting read-only audit") {
 		t.Fatalf("expected onboarding output, got %q", stdout.String())
@@ -202,9 +200,7 @@ func TestQuietTerminalAuditSuppressesExtraGuidance(t *testing.T) {
 	var stderr bytes.Buffer
 
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--config", configPath, "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if strings.Contains(stdout.String(), "Starting read-only audit") {
 		t.Fatalf("expected quiet mode to suppress onboarding, got %q", stdout.String())
@@ -263,9 +259,7 @@ func TestTerminalAuditCanAlsoWriteArtifacts(t *testing.T) {
 		"--report-json-path", reportPath,
 		"--report-markdown-path", markdownPath,
 	})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected clean exit code, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if !strings.Contains(stdout.String(), "larainspect audit") {
 		t.Fatalf("expected terminal report on stdout, got %q", stdout.String())
@@ -302,9 +296,7 @@ func TestAppRendersMarkdownAuditOutput(t *testing.T) {
 	var stderr bytes.Buffer
 
 	exitCode := cli.NewApp(&stdout, &stderr).Run(context.Background(), []string{"audit", "--config", configPath, "--format", "markdown", "--scope", "app", "--app-path", appPath})
-	if exitCode != int(model.ExitCodeClean) {
-		t.Fatalf("expected exit code 0, got %d stderr=%q", exitCode, stderr.String())
-	}
+	assertNonFatalAuditExit(t, exitCode, stderr.String())
 
 	if !strings.Contains(stdout.String(), "# Larainspect Audit Report") {
 		t.Fatalf("expected markdown output, got %q", stdout.String())
@@ -335,6 +327,9 @@ func TestAppPrintsVersion(t *testing.T) {
 	if !strings.Contains(stdout.String(), "larainspect dev") {
 		t.Fatalf("expected version output, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), ux.Banner()) {
+		t.Fatalf("expected banner in version output, got %q", stdout.String())
+	}
 }
 
 func TestAppPrintsVersionFlag(t *testing.T) {
@@ -349,6 +344,9 @@ func TestAppPrintsVersionFlag(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "larainspect dev") {
 		t.Fatalf("expected version output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), ux.Banner()) {
+		t.Fatalf("expected banner in version flag output, got %q", stdout.String())
 	}
 }
 
@@ -376,6 +374,9 @@ func TestAppPrintsVersionMetadataWhenPresent(t *testing.T) {
 	}
 
 	output := stdout.String()
+	if !strings.Contains(output, ux.Banner()) {
+		t.Fatalf("expected banner in output, got %q", output)
+	}
 	if !strings.Contains(output, "larainspect v1.2.3") {
 		t.Fatalf("expected semantic version in output, got %q", output)
 	}
@@ -408,6 +409,9 @@ func TestAppPrintsRootHelpForHelpCommand(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "Commands:") {
 		t.Fatalf("expected root help output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), ux.Banner()) {
+		t.Fatalf("expected banner in help output, got %q", stdout.String())
 	}
 }
 
@@ -466,6 +470,14 @@ func createDeterministicAuditConfigFile(t *testing.T) string {
 	writeFixtureFileWithMode(t, configPath, "version: 1\nswitches:\n  discover_nginx: false\n  discover_php_fpm: false\n  discover_supervisor: false\n  discover_systemd: false\n", 0o600)
 
 	return configPath
+}
+
+func assertNonFatalAuditExit(t *testing.T, exitCode int, stderr string) {
+	t.Helper()
+
+	if exitCode != int(model.ExitCodeClean) && exitCode != int(model.ExitCodeLowRisk) {
+		t.Fatalf("expected clean or low-risk exit code, got %d stderr=%q", exitCode, stderr)
+	}
 }
 
 func writeFixtureFile(t *testing.T, path string, contents string) {

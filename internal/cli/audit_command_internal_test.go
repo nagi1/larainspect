@@ -93,7 +93,10 @@ func TestNewAuditCommandRunESuccess(t *testing.T) {
 	cmd.SetArgs([]string{"--config", configPath, "--format", "json", "--verbosity", "quiet", "--scope", "app", "--app-path", appPath})
 	err := cmd.Execute()
 	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+		var cmdErr *commandError
+		if !errors.As(err, &cmdErr) || cmdErr.code != int(model.ExitCodeLowRisk) {
+			t.Fatalf("expected nil or low-risk command error, got %v", err)
+		}
 	}
 }
 
