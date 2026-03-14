@@ -103,6 +103,7 @@ type SnapshotService struct {
 	supervisorCommand  string
 	nginxPatterns      []string
 	phpFPMPatterns     []string
+	mysqlPatterns      []string
 	supervisorPatterns []string
 	systemdPatterns    []string
 	cronPatterns       []string
@@ -111,6 +112,7 @@ type SnapshotService struct {
 	sudoersPatterns    []string
 	discoverNginx      bool
 	discoverPHPFPM     bool
+	discoverMySQL      bool
 	discoverSupervisor bool
 	discoverSystemd    bool
 	discoverCron       bool
@@ -174,6 +176,15 @@ func NewService() SnapshotService {
 			"/www/server/php/*/etc/php-fpm.conf",
 			"/www/server/php/*/etc/php-fpm.d/*.conf",
 		},
+		mysqlPatterns: []string{
+			"/etc/mysql/my.cnf",
+			"/etc/mysql/conf.d/*.cnf",
+			"/etc/mysql/mysql.conf.d/*.cnf",
+			"/etc/my.cnf",
+			"/etc/my.cnf.d/*.cnf",
+			"/www/server/mysql/etc/my.cnf",
+			"/www/server/mysql/my.cnf",
+		},
 		supervisorPatterns: []string{
 			"/etc/supervisor/*.conf",
 			"/etc/supervisor/supervisord.conf",
@@ -207,6 +218,7 @@ func NewService() SnapshotService {
 		},
 		discoverNginx:      true,
 		discoverPHPFPM:     true,
+		discoverMySQL:      true,
 		discoverSupervisor: true,
 		discoverSystemd:    true,
 		discoverCron:       true,
@@ -231,6 +243,7 @@ func NewServiceForAudit(config model.AuditConfig) SnapshotService {
 		service.phpFPMCommands = configuredCommands
 	}
 	service.phpFPMPatterns = config.NormalizedPHPFPMPoolPatterns()
+	service.mysqlPatterns = config.NormalizedMySQLConfigPatterns()
 	if configuredCommand := config.NormalizedSupervisorBinary(); configuredCommand != "" {
 		service.supervisorCommand = configuredCommand
 	}
@@ -238,6 +251,7 @@ func NewServiceForAudit(config model.AuditConfig) SnapshotService {
 	service.systemdPatterns = config.NormalizedSystemdUnitPatterns()
 	service.discoverNginx = config.ShouldDiscoverNginx()
 	service.discoverPHPFPM = config.ShouldDiscoverPHPFPM()
+	service.discoverMySQL = config.ShouldDiscoverMySQL()
 	service.discoverSupervisor = config.ShouldDiscoverSupervisor()
 	service.discoverSystemd = config.ShouldDiscoverSystemd()
 	service.ruleEngine, service.ruleIssues = compileRuleEngine(config.Rules)
@@ -389,6 +403,10 @@ func (service SnapshotService) appendServiceConfigs(ctx context.Context, config 
 	launchDiscover(service.discoverPHPFPM, func() ([]model.Unknown, func()) {
 		items, u := service.discoverPHPFPMPools()
 		return u, func() { snapshot.PHPFPMPools = items }
+	})
+	launchDiscover(service.discoverMySQL, func() ([]model.Unknown, func()) {
+		items, u := service.discoverMySQLConfigs()
+		return u, func() { snapshot.MySQLConfigs = items }
 	})
 	launchDiscover(service.discoverSystemd, func() ([]model.Unknown, func()) {
 		items, u := service.discoverSystemdUnits()

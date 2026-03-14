@@ -253,6 +253,7 @@ func buildGeneratedConfig(preset configPreset, inspector hostInspector, answers 
 	}
 
 	config.Profile.Paths.AppScanRoots = defaultScanRoots(preset)
+	config.Profile.Paths.MySQLConfigPatterns = defaultGeneratedMySQLConfigPatterns(preset, osFamily)
 
 	switch preset {
 	case presetForge:
@@ -356,6 +357,26 @@ func cpanelNginxConfigPatterns(inspector hostInspector) []string {
 	}
 
 	return dedupeSorted(patterns)
+}
+
+func defaultGeneratedMySQLConfigPatterns(preset configPreset, osFamily string) []string {
+	switch preset {
+	case presetAAPanel:
+		return dedupeSorted([]string{
+			"/etc/my.cnf",
+			"/www/server/mysql/etc/my.cnf",
+			"/www/server/mysql/my.cnf",
+		})
+	case presetCPanel:
+		return []string{"/etc/my.cnf"}
+	case presetDigitalOcean, presetForge, presetVPS:
+		if strings.TrimSpace(osFamily) == "rhel" {
+			return dedupeSorted([]string{"/etc/my.cnf", "/etc/my.cnf.d/*.cnf"})
+		}
+		return dedupeSorted([]string{"/etc/mysql/my.cnf", "/etc/mysql/conf.d/*.cnf", "/etc/mysql/mysql.conf.d/*.cnf", "/etc/my.cnf"})
+	default:
+		return nil
+	}
 }
 
 func defaultScanRoots(preset configPreset) []string {
@@ -561,6 +582,7 @@ func renderGeneratedConfigYAML(config model.AuditConfig, mode string) ([]byte, e
 	useDefaultPaths := config.Profile.Paths.UseDefaultPatterns
 	discoverNginx := config.Profile.Switches.DiscoverNginx
 	discoverPHPFPM := config.Profile.Switches.DiscoverPHPFPM
+	discoverMySQL := config.Profile.Switches.DiscoverMySQL
 	discoverSupervisor := config.Profile.Switches.DiscoverSupervisor
 	discoverSystemd := config.Profile.Switches.DiscoverSystemd
 
@@ -586,6 +608,10 @@ func renderGeneratedConfigYAML(config model.AuditConfig, mode string) ([]byte, e
 				Enabled:  &discoverPHPFPM,
 				Binaries: cloneStrings(config.Profile.Commands.PHPFPMBinaries),
 				Paths:    cloneStrings(config.Profile.Paths.PHPFPMPoolPatterns),
+			},
+			MySQL: &fileServicePaths{
+				Enabled: &discoverMySQL,
+				Paths:   cloneStrings(config.Profile.Paths.MySQLConfigPatterns),
 			},
 			Supervisor: &fileServicePaths{
 				Enabled: &discoverSupervisor,

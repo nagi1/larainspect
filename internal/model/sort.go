@@ -75,6 +75,13 @@ func SortPHPFPMPools(pools []PHPFPMPool) {
 	)
 }
 
+func SortMySQLConfigs(configs []MySQLConfig) {
+	sortByTwoKeys(configs,
+		func(c MySQLConfig) string { return c.ConfigPath },
+		func(c MySQLConfig) string { return c.Section },
+	)
+}
+
 func SortSupervisorPrograms(programs []SupervisorProgram) {
 	sortByTwoKeys(programs,
 		func(p SupervisorProgram) string { return p.ConfigPath },

@@ -62,6 +62,9 @@ func TestBuildGeneratedConfigForAAPanelAddsPanelBinaries(t *testing.T) {
 	if config.Profile.Commands.SupervisorBinary != "/www/server/panel/pyenv/bin/supervisord" {
 		t.Fatalf("unexpected supervisor binary %q", config.Profile.Commands.SupervisorBinary)
 	}
+	if len(config.Profile.Paths.MySQLConfigPatterns) == 0 || config.Profile.Paths.MySQLConfigPatterns[0] != "/etc/my.cnf" {
+		t.Fatalf("expected aaPanel mysql config paths, got %+v", config.Profile.Paths.MySQLConfigPatterns)
+	}
 	if len(config.Profile.Commands.PHPFPMBinaries) != 2 {
 		t.Fatalf("expected php-fpm binaries, got %+v", config.Profile.Commands.PHPFPMBinaries)
 	}
@@ -179,6 +182,9 @@ func TestRunSetupCommandPromptsWhenDetectionFails(t *testing.T) {
 	}
 	if !strings.Contains(string(contents), "/www/server/nginx/sbin/nginx") {
 		t.Fatalf("expected aaPanel nginx binary in generated config, got %q", string(contents))
+	}
+	if !strings.Contains(string(contents), "mysql:") || !strings.Contains(string(contents), "/etc/my.cnf") {
+		t.Fatalf("expected mysql config hints in generated config, got %q", string(contents))
 	}
 	if !strings.Contains(string(contents), "scope: app") || !strings.Contains(string(contents), "app_path: /www/wwwroot/shop") {
 		t.Fatalf("expected prompted app scope in generated config, got %q", string(contents))

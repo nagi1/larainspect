@@ -140,6 +140,15 @@ func TestCoreLaravelPathExpectationsAndSortHelpers(t *testing.T) {
 		t.Fatalf("SortPHPFPMPools() did not sort as expected: %+v", pools)
 	}
 
+	mysqlConfigs := []model.MySQLConfig{
+		{ConfigPath: "b.cnf", Section: "mysqld"},
+		{ConfigPath: "a.cnf", Section: "client"},
+	}
+	model.SortMySQLConfigs(mysqlConfigs)
+	if mysqlConfigs[0].ConfigPath != "a.cnf" {
+		t.Fatalf("SortMySQLConfigs() did not sort as expected: %+v", mysqlConfigs)
+	}
+
 	supervisorPrograms := []model.SupervisorProgram{
 		{ConfigPath: "b.conf", Name: "b"},
 		{ConfigPath: "a.conf", Name: "a"},

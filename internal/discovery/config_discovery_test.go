@@ -187,6 +187,12 @@ func TestSnapshotServiceDiscoversNginxSitesFromCommand(t *testing.T) {
 		}
 		return "", fs.ErrNotExist
 	}
+	service.statPath = func(path string) (fs.FileInfo, error) {
+		if path == "/www/server/nginx/sbin/nginx" {
+			return fakeExecutableFileInfo{name: path}, nil
+		}
+		return nil, fs.ErrNotExist
+	}
 	service.runCommand = func(_ context.Context, command model.CommandRequest) (model.CommandResult, error) {
 		if command.Name != "/www/server/nginx/sbin/nginx" || len(command.Args) != 1 || command.Args[0] != "-T" {
 			t.Fatalf("unexpected command %+v", command)

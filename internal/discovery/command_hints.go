@@ -12,9 +12,28 @@ import (
 
 func (service SnapshotService) anyCommandAvailable(commands []string) bool {
 	for _, commandName := range commands {
-		if service.resolveCommandPath(commandName) != "" {
+		if service.commandAvailable(commandName) {
 			return true
 		}
+	}
+
+	return false
+}
+
+func (service SnapshotService) commandAvailable(commandName string) bool {
+	trimmedCommand := strings.TrimSpace(commandName)
+	if trimmedCommand == "" {
+		return false
+	}
+
+	if service.lookPath != nil {
+		if _, err := service.lookPath(trimmedCommand); err == nil {
+			return true
+		}
+	}
+
+	if strings.ContainsRune(trimmedCommand, filepath.Separator) {
+		return service.pathLooksExecutable(filepath.Clean(trimmedCommand))
 	}
 
 	return false
@@ -32,13 +51,39 @@ func (service SnapshotService) resolveCommandPath(commandName string) string {
 		}
 	}
 
-	for _, candidatePath := range commandFallbackCandidates(trimmedCommand) {
+	if strings.ContainsRune(trimmedCommand, filepath.Separator) {
+		cleanPath := filepath.Clean(trimmedCommand)
+		if service.pathLooksExecutable(cleanPath) {
+			return cleanPath
+		}
+
+		return ""
+	}
+
+	for _, candidatePath := range implicitCommandFallbackCandidates(trimmedCommand) {
 		if service.pathLooksExecutable(candidatePath) {
 			return candidatePath
 		}
 	}
 
 	return ""
+}
+
+func (service SnapshotService) anyImplicitCommandFallbackAvailable(commands []string) bool {
+	for _, commandName := range commands {
+		trimmedCommand := strings.TrimSpace(commandName)
+		if trimmedCommand == "" || strings.ContainsRune(trimmedCommand, filepath.Separator) {
+			continue
+		}
+
+		for _, candidatePath := range implicitCommandFallbackCandidates(trimmedCommand) {
+			if service.pathLooksExecutable(candidatePath) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (service SnapshotService) pathLooksExecutable(path string) bool {
@@ -92,6 +137,24 @@ func commandFallbackCandidates(commandName string) []string {
 	}
 
 	return nil
+}
+
+func implicitCommandFallbackCandidates(commandName string) []string {
+	candidates := commandFallbackCandidates(commandName)
+	implicitCandidates := make([]string, 0, len(candidates))
+
+	for _, candidatePath := range candidates {
+		if isImplicitCommandFallbackCandidate(candidatePath) {
+			implicitCandidates = append(implicitCandidates, candidatePath)
+		}
+	}
+
+	return implicitCandidates
+}
+
+func isImplicitCommandFallbackCandidate(path string) bool {
+	cleanPath := filepath.Clean(path)
+	return strings.HasPrefix(cleanPath, "/www/server/")
 }
 
 func phpFPMFallbackCandidates(commandName string) []string {
@@ -160,6 +223,10 @@ func (service SnapshotService) commandHintUnknowns(
 
 	normalizedCommands := normalizeCommandHints(commands)
 	if len(normalizedCommands) == 0 || service.anyCommandAvailable(normalizedCommands) {
+		return nil
+	}
+
+	if !commandsUseExplicitPaths(normalizedCommands) && service.anyImplicitCommandFallbackAvailable(normalizedCommands) {
 		return nil
 	}
 

@@ -109,6 +109,24 @@ func (service SnapshotService) discoverPHPFPMPools() ([]model.PHPFPMPool, []mode
 	return pools, unknowns
 }
 
+func (service SnapshotService) discoverMySQLConfigs() ([]model.MySQLConfig, []model.Unknown) {
+	configFiles, unknowns := service.readConfigFilesFromPatterns(operationalDiscoveryCheckID, "Unable to read MySQL config", service.mysqlPatterns)
+	configs := make([]model.MySQLConfig, 0, len(configFiles))
+
+	for _, configFile := range configFiles {
+		parsedConfigs, parseErr := parseMySQLConfigs(configFile.path, string(configFile.contents))
+		if parseErr != nil {
+			unknowns = append(unknowns, newParseUnknown(operationalDiscoveryCheckID, "Unable to parse MySQL config", configFile.path, parseErr))
+			continue
+		}
+
+		configs = append(configs, parsedConfigs...)
+	}
+
+	model.SortMySQLConfigs(configs)
+	return configs, unknowns
+}
+
 func (service SnapshotService) discoverSSHConfigs() ([]model.SSHConfig, []model.Unknown) {
 	configFiles, unknowns := service.readConfigFilesFromPatterns(operationalDiscoveryCheckID, "Unable to read SSH config", service.sshPatterns)
 	configs := make([]model.SSHConfig, 0, len(configFiles))

@@ -20,6 +20,7 @@ type DiscoveryPaths struct {
 	AppScanRoots             []string
 	NginxConfigPatterns      []string
 	PHPFPMPoolPatterns       []string
+	MySQLConfigPatterns      []string
 	SupervisorConfigPatterns []string
 	SystemdUnitPatterns      []string
 }
@@ -27,6 +28,7 @@ type DiscoveryPaths struct {
 type DiscoverySwitches struct {
 	DiscoverNginx      bool
 	DiscoverPHPFPM     bool
+	DiscoverMySQL      bool
 	DiscoverSupervisor bool
 	DiscoverSystemd    bool
 }
@@ -62,6 +64,7 @@ func DefaultAuditConfig() AuditConfig {
 			Switches: DiscoverySwitches{
 				DiscoverNginx:      true,
 				DiscoverPHPFPM:     true,
+				DiscoverMySQL:      true,
 				DiscoverSupervisor: true,
 				DiscoverSystemd:    true,
 			},
@@ -110,6 +113,10 @@ func (config AuditConfig) NormalizedPHPFPMPoolPatterns() []string {
 	return config.effectivePatternList(defaultPHPFPMPoolPatterns(config.NormalizedOSFamily()), config.Profile.Paths.PHPFPMPoolPatterns)
 }
 
+func (config AuditConfig) NormalizedMySQLConfigPatterns() []string {
+	return config.effectivePatternList(defaultMySQLConfigPatterns(config.NormalizedOSFamily()), config.Profile.Paths.MySQLConfigPatterns)
+}
+
 func (config AuditConfig) NormalizedSupervisorConfigPatterns() []string {
 	return config.effectivePatternList(defaultSupervisorConfigPatterns(config.NormalizedOSFamily()), config.Profile.Paths.SupervisorConfigPatterns)
 }
@@ -136,6 +143,10 @@ func (config AuditConfig) ShouldDiscoverNginx() bool {
 
 func (config AuditConfig) ShouldDiscoverPHPFPM() bool {
 	return config.Profile.Switches.DiscoverPHPFPM
+}
+
+func (config AuditConfig) ShouldDiscoverMySQL() bool {
+	return config.Profile.Switches.DiscoverMySQL
 }
 
 func (config AuditConfig) ShouldDiscoverSupervisor() bool {
@@ -248,6 +259,38 @@ func defaultSupervisorConfigPatterns(osFamily string) []string {
 			"/etc/supervisor/conf.d/*.conf",
 			"/etc/supervisord.conf",
 			"/etc/supervisord.d/*.ini",
+		}
+	}
+}
+
+func defaultMySQLConfigPatterns(osFamily string) []string {
+	switch osFamily {
+	case "debian":
+		return []string{
+			"/etc/mysql/my.cnf",
+			"/etc/mysql/conf.d/*.cnf",
+			"/etc/mysql/mysql.conf.d/*.cnf",
+			"/etc/my.cnf",
+			"/www/server/mysql/etc/my.cnf",
+			"/www/server/mysql/my.cnf",
+		}
+	case "rhel":
+		return []string{
+			"/etc/my.cnf",
+			"/etc/my.cnf.d/*.cnf",
+			"/etc/mysql/conf.d/*.cnf",
+			"/www/server/mysql/etc/my.cnf",
+			"/www/server/mysql/my.cnf",
+		}
+	default:
+		return []string{
+			"/etc/mysql/my.cnf",
+			"/etc/mysql/conf.d/*.cnf",
+			"/etc/mysql/mysql.conf.d/*.cnf",
+			"/etc/my.cnf",
+			"/etc/my.cnf.d/*.cnf",
+			"/www/server/mysql/etc/my.cnf",
+			"/www/server/mysql/my.cnf",
 		}
 	}
 }

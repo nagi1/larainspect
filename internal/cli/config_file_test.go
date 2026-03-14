@@ -32,6 +32,10 @@ func TestLoadAuditConfigFileParsesSimpleSections(t *testing.T) {
     "php_fpm": {
       "enabled": false,
       "paths": ["/custom/php-fpm/*.conf"]
+		},
+		"mysql": {
+			"enabled": true,
+			"paths": ["/custom/mysql/*.cnf"]
     }
   },
   "output": {
@@ -70,6 +74,9 @@ func TestLoadAuditConfigFileParsesSimpleSections(t *testing.T) {
 	}
 	if config.Profile.Paths.UseDefaultPatterns || len(config.NormalizedNginxConfigPatterns()) != 1 {
 		t.Fatalf("expected custom-only patterns, got %+v", config.Profile.Paths)
+	}
+	if got := config.NormalizedMySQLConfigPatterns(); len(got) != 1 || got[0] != "/custom/mysql/*.cnf" {
+		t.Fatalf("expected custom mysql patterns, got %+v", got)
 	}
 	if config.ShouldDiscoverPHPFPM() {
 		t.Fatalf("expected discover_php_fpm=false to be respected")
@@ -421,6 +428,7 @@ func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
 	useDefaultPatterns := false
 	discoverNginx := false
 	discoverPHPFPM := false
+	discoverMySQL := false
 	discoverSupervisor := false
 	discoverSystemd := false
 
@@ -429,12 +437,14 @@ func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
 		AppScanRoots:             []string{"/srv/apps", "/opt/apps"},
 		NginxConfigPatterns:      []string{"/etc/nginx/custom/*.conf"},
 		PHPFPMPoolPatterns:       []string{"/etc/php/custom/*.conf"},
+		MySQLConfigPatterns:      []string{"/etc/mysql/custom/*.cnf"},
 		SupervisorConfigPatterns: []string{"/etc/supervisor/custom/*.conf"},
 		SystemdUnitPatterns:      []string{"/etc/systemd/custom/*.service"},
 	})
 	applySwitchesSection(&config, fileSwitchesConfig{
 		DiscoverNginx:      &discoverNginx,
 		DiscoverPHPFPM:     &discoverPHPFPM,
+		DiscoverMySQL:      &discoverMySQL,
 		DiscoverSupervisor: &discoverSupervisor,
 		DiscoverSystemd:    &discoverSystemd,
 	})
@@ -445,10 +455,10 @@ func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
 	if len(config.Profile.Paths.AppScanRoots) != 2 || len(config.Profile.Paths.NginxConfigPatterns) != 1 {
 		t.Fatalf("unexpected path overrides: %+v", config.Profile.Paths)
 	}
-	if len(config.Profile.Paths.PHPFPMPoolPatterns) != 1 || len(config.Profile.Paths.SupervisorConfigPatterns) != 1 || len(config.Profile.Paths.SystemdUnitPatterns) != 1 {
+	if len(config.Profile.Paths.PHPFPMPoolPatterns) != 1 || len(config.Profile.Paths.MySQLConfigPatterns) != 1 || len(config.Profile.Paths.SupervisorConfigPatterns) != 1 || len(config.Profile.Paths.SystemdUnitPatterns) != 1 {
 		t.Fatalf("unexpected service path overrides: %+v", config.Profile.Paths)
 	}
-	if config.ShouldDiscoverNginx() || config.ShouldDiscoverPHPFPM() || config.ShouldDiscoverSupervisor() || config.ShouldDiscoverSystemd() {
+	if config.ShouldDiscoverNginx() || config.ShouldDiscoverPHPFPM() || config.ShouldDiscoverMySQL() || config.ShouldDiscoverSupervisor() || config.ShouldDiscoverSystemd() {
 		t.Fatalf("expected discovery switches to be disabled: %+v", config.Profile.Switches)
 	}
 }

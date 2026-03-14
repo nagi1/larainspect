@@ -15,10 +15,12 @@ func newTestSnapshotService() SnapshotService {
 	service := NewService()
 	service.nginxPatterns = nil
 	service.phpFPMPatterns = nil
+	service.mysqlPatterns = nil
 	service.supervisorPatterns = nil
 	service.systemdPatterns = nil
 	service.cronPatterns = nil
 	service.discoverSupervisor = false
+	service.discoverMySQL = false
 	service.discoverSystemd = false
 	service.discoverCron = false
 	service.discoverListeners = false
@@ -60,8 +62,10 @@ func TestNewServiceForAuditUsesProfileDrivenDiscoverySettings(t *testing.T) {
 	config.Profile.Paths.UseDefaultPatterns = false
 	config.Profile.Paths.NginxConfigPatterns = []string{"/srv/nginx/*.conf"}
 	config.Profile.Paths.PHPFPMPoolPatterns = []string{"/srv/php-fpm/*.conf"}
+	config.Profile.Paths.MySQLConfigPatterns = []string{"/srv/mysql/*.cnf"}
 	config.Profile.Commands.PHPFPMBinaries = []string{"/opt/php/83/sbin/php-fpm"}
 	config.Profile.Switches.DiscoverNginx = false
+	config.Profile.Switches.DiscoverMySQL = false
 
 	service := NewServiceForAudit(config)
 
@@ -72,6 +76,9 @@ func TestNewServiceForAuditUsesProfileDrivenDiscoverySettings(t *testing.T) {
 	if !service.discoverPHPFPM {
 		t.Fatal("expected php-fpm discovery to remain enabled")
 	}
+	if service.discoverMySQL {
+		t.Fatal("expected mysql discovery to be disabled from profile switches")
+	}
 
 	if len(service.nginxPatterns) != 1 || service.nginxPatterns[0] != "/srv/nginx/*.conf" {
 		t.Fatalf("unexpected nginx patterns %+v", service.nginxPatterns)
@@ -79,6 +86,9 @@ func TestNewServiceForAuditUsesProfileDrivenDiscoverySettings(t *testing.T) {
 
 	if len(service.phpFPMPatterns) != 1 || service.phpFPMPatterns[0] != "/srv/php-fpm/*.conf" {
 		t.Fatalf("unexpected php-fpm patterns %+v", service.phpFPMPatterns)
+	}
+	if len(service.mysqlPatterns) != 1 || service.mysqlPatterns[0] != "/srv/mysql/*.cnf" {
+		t.Fatalf("unexpected mysql patterns %+v", service.mysqlPatterns)
 	}
 	if len(service.phpFPMCommands) != 1 || service.phpFPMCommands[0] != "/opt/php/83/sbin/php-fpm" {
 		t.Fatalf("unexpected php-fpm commands %+v", service.phpFPMCommands)
@@ -93,13 +103,13 @@ func TestNewServiceUsesSafeOperationalDefaults(t *testing.T) {
 	if service.lookPath == nil || service.readFile == nil || service.runCommand == nil {
 		t.Fatalf("expected constructor to initialize core dependencies: %+v", service)
 	}
-	if !service.discoverNginx || !service.discoverPHPFPM || !service.discoverSupervisor || !service.discoverSystemd {
+	if !service.discoverNginx || !service.discoverPHPFPM || !service.discoverMySQL || !service.discoverSupervisor || !service.discoverSystemd {
 		t.Fatalf("expected core service discovery defaults to be enabled: %+v", service)
 	}
 	if !service.discoverCron || !service.discoverListeners || !service.discoverSSH || !service.discoverSudo || !service.discoverFirewall {
 		t.Fatalf("expected operational discovery defaults to be enabled: %+v", service)
 	}
-	if len(service.nginxPatterns) == 0 || len(service.phpFPMPatterns) == 0 || len(service.supervisorPatterns) == 0 || len(service.systemdPatterns) == 0 {
+	if len(service.nginxPatterns) == 0 || len(service.phpFPMPatterns) == 0 || len(service.mysqlPatterns) == 0 || len(service.supervisorPatterns) == 0 || len(service.systemdPatterns) == 0 {
 		t.Fatalf("expected built-in config patterns, got %+v", service)
 	}
 	if len(service.cronPatterns) == 0 || len(service.sshPatterns) == 0 || len(service.sudoersPatterns) == 0 {

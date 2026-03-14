@@ -45,6 +45,7 @@ type fileServicesConfig struct {
 	UseDefaultPaths *bool             `json:"use_default_paths,omitempty" yaml:"use_default_paths,omitempty"`
 	Nginx           *fileServicePaths `json:"nginx,omitempty" yaml:"nginx,omitempty"`
 	PHPFPM          *fileServicePaths `json:"php_fpm,omitempty" yaml:"php_fpm,omitempty"`
+	MySQL           *fileServicePaths `json:"mysql,omitempty" yaml:"mysql,omitempty"`
 	Supervisor      *fileServicePaths `json:"supervisor,omitempty" yaml:"supervisor,omitempty"`
 	Systemd         *fileServicePaths `json:"systemd,omitempty" yaml:"systemd,omitempty"`
 }
@@ -100,6 +101,7 @@ type filePathsConfig struct {
 	AppScanRoots             []string `json:"app_scan_roots,omitempty" yaml:"app_scan_roots,omitempty"`
 	NginxConfigPatterns      []string `json:"nginx_config_patterns,omitempty" yaml:"nginx_config_patterns,omitempty"`
 	PHPFPMPoolPatterns       []string `json:"php_fpm_pool_patterns,omitempty" yaml:"php_fpm_pool_patterns,omitempty"`
+	MySQLConfigPatterns      []string `json:"mysql_config_patterns,omitempty" yaml:"mysql_config_patterns,omitempty"`
 	SupervisorConfigPatterns []string `json:"supervisor_config_patterns,omitempty" yaml:"supervisor_config_patterns,omitempty"`
 	SystemdUnitPatterns      []string `json:"systemd_unit_patterns,omitempty" yaml:"systemd_unit_patterns,omitempty"`
 }
@@ -107,6 +109,7 @@ type filePathsConfig struct {
 type fileSwitchesConfig struct {
 	DiscoverNginx      *bool `json:"discover_nginx,omitempty" yaml:"discover_nginx,omitempty"`
 	DiscoverPHPFPM     *bool `json:"discover_php_fpm,omitempty" yaml:"discover_php_fpm,omitempty"`
+	DiscoverMySQL      *bool `json:"discover_mysql,omitempty" yaml:"discover_mysql,omitempty"`
 	DiscoverSupervisor *bool `json:"discover_supervisor,omitempty" yaml:"discover_supervisor,omitempty"`
 	DiscoverSystemd    *bool `json:"discover_systemd,omitempty" yaml:"discover_systemd,omitempty"`
 }
@@ -306,6 +309,7 @@ func applyServicesSection(config *model.AuditConfig, servicesConfig fileServices
 
 	applyServicePathConfig(&config.Profile.Switches.DiscoverNginx, &config.Profile.Paths.NginxConfigPatterns, servicesConfig.Nginx)
 	applyServicePathConfig(&config.Profile.Switches.DiscoverPHPFPM, &config.Profile.Paths.PHPFPMPoolPatterns, servicesConfig.PHPFPM)
+	applyServicePathConfig(&config.Profile.Switches.DiscoverMySQL, &config.Profile.Paths.MySQLConfigPatterns, servicesConfig.MySQL)
 	applyServicePathConfig(&config.Profile.Switches.DiscoverSupervisor, &config.Profile.Paths.SupervisorConfigPatterns, servicesConfig.Supervisor)
 	applyServicePathConfig(&config.Profile.Switches.DiscoverSystemd, &config.Profile.Paths.SystemdUnitPatterns, servicesConfig.Systemd)
 	applyServiceCommandConfig(&config.Profile.Commands, servicesConfig)
@@ -480,6 +484,9 @@ func applyPathsSection(config *model.AuditConfig, pathsConfig filePathsConfig) {
 	if pathsConfig.PHPFPMPoolPatterns != nil {
 		config.Profile.Paths.PHPFPMPoolPatterns = cloneStrings(pathsConfig.PHPFPMPoolPatterns)
 	}
+	if pathsConfig.MySQLConfigPatterns != nil {
+		config.Profile.Paths.MySQLConfigPatterns = cloneStrings(pathsConfig.MySQLConfigPatterns)
+	}
 	if pathsConfig.SupervisorConfigPatterns != nil {
 		config.Profile.Paths.SupervisorConfigPatterns = cloneStrings(pathsConfig.SupervisorConfigPatterns)
 	}
@@ -494,6 +501,9 @@ func applySwitchesSection(config *model.AuditConfig, switchesConfig fileSwitches
 	}
 	if switchesConfig.DiscoverPHPFPM != nil {
 		config.Profile.Switches.DiscoverPHPFPM = *switchesConfig.DiscoverPHPFPM
+	}
+	if switchesConfig.DiscoverMySQL != nil {
+		config.Profile.Switches.DiscoverMySQL = *switchesConfig.DiscoverMySQL
 	}
 	if switchesConfig.DiscoverSupervisor != nil {
 		config.Profile.Switches.DiscoverSupervisor = *switchesConfig.DiscoverSupervisor

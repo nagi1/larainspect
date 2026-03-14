@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,38 +13,42 @@ import (
 func TestLoadAuditConfigFileYAMLParsesSimpleSections(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.yaml")
-	writeConfigFileForTest(t, configPath, `
-version: 1
-server:
-  name: fedora-prod
-  os: fedora
-laravel:
-  scope: host
-  app_path: /srv/laravel/shop/current
-  scan_roots:
-    - /opt/apps
-services:
-  use_default_paths: false
-  nginx:
-    enabled: true
-    binary: /www/server/nginx/sbin/nginx
-    paths:
-      - "/custom/nginx/*.conf"
-  php_fpm:
-    enabled: false
-    binaries:
-      - /www/server/php/83/sbin/php-fpm
-      - /www/server/php/85/sbin/php-fpm
-    paths:
-      - "/custom/php-fpm/*.conf"
-output:
-  format: json
-  verbosity: quiet
-  report_json_path: /tmp/larainspect-report.json
-  report_markdown_path: /tmp/larainspect-report.md
-advanced:
-  command_timeout: 5s
-`)
+	writeConfigFileForTest(t, configPath, strings.Join([]string{
+		"version: 1",
+		"server:",
+		"  name: fedora-prod",
+		"  os: fedora",
+		"laravel:",
+		"  scope: host",
+		"  app_path: /srv/laravel/shop/current",
+		"  scan_roots:",
+		"    - /opt/apps",
+		"services:",
+		"  use_default_paths: false",
+		"  nginx:",
+		"    enabled: true",
+		"    binary: /www/server/nginx/sbin/nginx",
+		"    paths:",
+		"      - /custom/nginx/*.conf",
+		"  php_fpm:",
+		"    enabled: false",
+		"    binaries:",
+		"      - /www/server/php/83/sbin/php-fpm",
+		"      - /www/server/php/85/sbin/php-fpm",
+		"    paths:",
+		"      - /custom/php-fpm/*.conf",
+		"  mysql:",
+		"    enabled: true",
+		"    paths:",
+		"      - /custom/mysql/*.cnf",
+		"output:",
+		"  format: json",
+		"  verbosity: quiet",
+		"  report_json_path: /tmp/larainspect-report.json",
+		"  report_markdown_path: /tmp/larainspect-report.md",
+		"advanced:",
+		"  command_timeout: 5s",
+	}, "\n"))
 
 	config, err := loadAuditConfigFile(configPath)
 	if err != nil {
@@ -73,6 +78,9 @@ advanced:
 	}
 	if got := config.NormalizedPHPFPMBinaries(); len(got) != 2 || got[0] != "/www/server/php/83/sbin/php-fpm" || got[1] != "/www/server/php/85/sbin/php-fpm" {
 		t.Fatalf("expected php-fpm binaries to be loaded, got %+v", got)
+	}
+	if got := config.NormalizedMySQLConfigPatterns(); len(got) != 1 || got[0] != "/custom/mysql/*.cnf" {
+		t.Fatalf("expected mysql config paths to be loaded, got %+v", got)
 	}
 	if config.Profile.Paths.UseDefaultPatterns || len(config.NormalizedNginxConfigPatterns()) != 1 {
 		t.Fatalf("expected custom-only patterns, got %+v", config.Profile.Paths)
@@ -348,53 +356,57 @@ func TestDecodeYAMLConfigRejectsMalformedTrailingDocument(t *testing.T) {
 func TestLoadAuditConfigFileYAMLFullAllSections(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.yaml")
-	writeConfigFileForTest(t, configPath, `
-version: 1
-server:
-  name: prod
-  os: ubuntu
-laravel:
-  scope: app
-  app_path: /var/www/app
-  scan_roots:
-    - /var/www
-services:
-  use_default_paths: true
-  nginx:
-    enabled: true
-    paths:
-      - "/etc/nginx/*.conf"
-  php_fpm:
-    enabled: true
-    paths:
-      - "/etc/php/*.conf"
-  supervisor:
-    enabled: false
-    paths: []
-  systemd:
-    enabled: false
-    paths: []
-output:
-  format: terminal
-  verbosity: verbose
-  interactive: true
-  color: never
-  screen_reader: true
-advanced:
-  command_timeout: 10s
-  max_output_bytes: 2048
-  worker_limit: 2
-rules:
-  enable:
-    - laravel.debug.dd_call
-  disable:
-    - laravel.inject.eval
-  custom_dirs:
-    - /tmp/rules
-  override:
-    laravel.debug.dd_call:
-      severity: medium
-`)
+	writeConfigFileForTest(t, configPath, strings.Join([]string{
+		"version: 1",
+		"server:",
+		"  name: prod",
+		"  os: ubuntu",
+		"laravel:",
+		"  scope: app",
+		"  app_path: /var/www/app",
+		"  scan_roots:",
+		"    - /var/www",
+		"services:",
+		"  use_default_paths: true",
+		"  nginx:",
+		"    enabled: true",
+		"    paths:",
+		"      - /etc/nginx/*.conf",
+		"  php_fpm:",
+		"    enabled: true",
+		"    paths:",
+		"      - /etc/php/*.conf",
+		"  mysql:",
+		"    enabled: true",
+		"    paths:",
+		"      - /etc/mysql/*.cnf",
+		"  supervisor:",
+		"    enabled: false",
+		"    paths: []",
+		"  systemd:",
+		"    enabled: false",
+		"    paths: []",
+		"output:",
+		"  format: terminal",
+		"  verbosity: verbose",
+		"  interactive: true",
+		"  color: never",
+		"  screen_reader: true",
+		"advanced:",
+		"  command_timeout: 10s",
+		"  max_output_bytes: 2048",
+		"  worker_limit: 2",
+		"rules:",
+		"  enable:",
+		"    - laravel.debug.dd_call",
+		"  disable:",
+		"    - laravel.inject.eval",
+		"  custom_dirs:",
+		"    - /tmp/rules",
+		"  override:",
+		"    laravel.debug.dd_call:",
+		"      severity: medium",
+	}, "\n"))
 
 	config, err := loadAuditConfigFile(configPath)
 	if err != nil {
@@ -426,5 +438,19 @@ rules:
 	}
 	if config.ShouldDiscoverSupervisor() || config.ShouldDiscoverSystemd() {
 		t.Fatalf("expected supervisor and systemd disabled")
+	}
+	got := config.NormalizedMySQLConfigPatterns()
+	if len(got) < 2 {
+		t.Fatalf("expected default and explicit mysql patterns, got %+v", got)
+	}
+	foundExplicitMySQLPattern := false
+	for _, pattern := range got {
+		if pattern == "/etc/mysql/*.cnf" {
+			foundExplicitMySQLPattern = true
+			break
+		}
+	}
+	if !foundExplicitMySQLPattern {
+		t.Fatalf("expected explicit mysql pattern, got %+v", got)
 	}
 }

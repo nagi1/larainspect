@@ -16,6 +16,9 @@ func TestDefaultAuditConfigUsesSafeProfileDefaults(t *testing.T) {
 	if !config.ShouldDiscoverNginx() || !config.ShouldDiscoverPHPFPM() || !config.ShouldDiscoverSupervisor() || !config.ShouldDiscoverSystemd() {
 		t.Fatalf("expected default service discovery switches, got %+v", config.Profile.Switches)
 	}
+	if !config.ShouldDiscoverMySQL() {
+		t.Fatalf("expected mysql discovery to be enabled by default, got %+v", config.Profile.Switches)
+	}
 }
 
 func TestProfileHelpersNormalizeOSFamilyAndPatterns(t *testing.T) {
@@ -56,6 +59,18 @@ func TestProfileHelpersNormalizeOSFamilyAndPatterns(t *testing.T) {
 	}
 	if !foundAAPanelPHPPattern {
 		t.Fatalf("expected aaPanel php-fpm main config pattern, got %+v", phpPatterns)
+	}
+
+	mysqlPatterns := config.NormalizedMySQLConfigPatterns()
+	foundMySQLPattern := false
+	for _, pattern := range mysqlPatterns {
+		if pattern == "/etc/my.cnf" {
+			foundMySQLPattern = true
+			break
+		}
+	}
+	if !foundMySQLPattern {
+		t.Fatalf("expected mysql config pattern, got %+v", mysqlPatterns)
 	}
 }
 

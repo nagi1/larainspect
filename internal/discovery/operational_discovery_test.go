@@ -284,6 +284,7 @@ func TestSnapshotServiceDiscoversOperationalConfigsAndListeners(t *testing.T) {
 	t.Parallel()
 
 	configRoot := t.TempDir()
+	mysqlConfigPath := filepath.Join(configRoot, "mysql", "my.cnf")
 	supervisorConfigPath := filepath.Join(configRoot, "supervisor", "laravel.conf")
 	systemdUnitPath := filepath.Join(configRoot, "systemd", "laravel-worker.service")
 	cronConfigPath := filepath.Join(configRoot, "cron.d", "laravel")
@@ -291,7 +292,7 @@ func TestSnapshotServiceDiscoversOperationalConfigsAndListeners(t *testing.T) {
 	sshAccountPath := filepath.Join(configRoot, "home", "deploy", ".ssh")
 	sudoersPath := filepath.Join(configRoot, "sudoers.d", "deploy")
 
-	for _, path := range []string{supervisorConfigPath, systemdUnitPath, cronConfigPath, sshConfigPath, sudoersPath, sshAccountPath} {
+	for _, path := range []string{mysqlConfigPath, supervisorConfigPath, systemdUnitPath, cronConfigPath, sshConfigPath, sudoersPath, sshAccountPath} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) error = %v", path, err)
 		}
@@ -300,6 +301,7 @@ func TestSnapshotServiceDiscoversOperationalConfigsAndListeners(t *testing.T) {
 		t.Fatalf("MkdirAll(%q) error = %v", sshAccountPath, err)
 	}
 
+	writeTestFile(t, mysqlConfigPath, "[mysqld]\nbind-address=127.0.0.1\nport=3306\ndatadir=/www/server/data\n")
 	writeTestFile(t, supervisorConfigPath, "[program:worker]\ncommand=/usr/bin/php /var/www/shop/current/artisan queue:work\nuser=root\n")
 	writeTestFile(t, systemdUnitPath, "[Service]\nUser=www-data\nWorkingDirectory=/var/www/shop/current\nExecStart=/usr/bin/php artisan schedule:run\n")
 	writeTestFile(t, cronConfigPath, "* * * * * deploy cd /var/www/shop/current && php artisan schedule:run\n")
@@ -315,12 +317,14 @@ func TestSnapshotServiceDiscoversOperationalConfigsAndListeners(t *testing.T) {
 	}
 
 	service := newTestSnapshotService()
+	service.mysqlPatterns = []string{mysqlConfigPath}
 	service.supervisorPatterns = []string{supervisorConfigPath}
 	service.systemdPatterns = []string{systemdUnitPath}
 	service.cronPatterns = []string{cronConfigPath}
 	service.sshPatterns = []string{sshConfigPath}
 	service.sshAccountPatterns = []string{sshAccountPath}
 	service.sudoersPatterns = []string{sudoersPath}
+	service.discoverMySQL = true
 	service.discoverSupervisor = true
 	service.discoverSystemd = true
 	service.discoverCron = true
@@ -366,8 +370,11 @@ func TestSnapshotServiceDiscoversOperationalConfigsAndListeners(t *testing.T) {
 		t.Fatalf("expected no unknowns, got %+v", unknowns)
 	}
 
-	if len(snapshot.SupervisorPrograms) != 1 || len(snapshot.SystemdUnits) != 1 || len(snapshot.CronEntries) != 1 || len(snapshot.Listeners) != 1 || len(snapshot.SSHConfigs) != 1 || len(snapshot.SSHAccounts) != 1 || len(snapshot.SudoRules) != 1 || len(snapshot.FirewallSummaries) != 1 {
+	if len(snapshot.MySQLConfigs) != 1 || len(snapshot.SupervisorPrograms) != 1 || len(snapshot.SystemdUnits) != 1 || len(snapshot.CronEntries) != 1 || len(snapshot.Listeners) != 1 || len(snapshot.SSHConfigs) != 1 || len(snapshot.SSHAccounts) != 1 || len(snapshot.SudoRules) != 1 || len(snapshot.FirewallSummaries) != 1 {
 		t.Fatalf("unexpected operational snapshot: %+v", snapshot)
+	}
+	if snapshot.MySQLConfigs[0].DataDir != "/www/server/data" {
+		t.Fatalf("unexpected mysql configs: %+v", snapshot.MySQLConfigs)
 	}
 
 	account := snapshot.SSHAccounts[0]

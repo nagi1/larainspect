@@ -212,6 +212,16 @@ type PHPFPMPool struct {
 	ClearEnv    string `json:"clear_env,omitempty"`
 }
 
+type MySQLConfig struct {
+	ConfigPath     string `json:"config_path"`
+	Section        string `json:"section,omitempty"`
+	BindAddress    string `json:"bind_address,omitempty"`
+	Port           string `json:"port,omitempty"`
+	Socket         string `json:"socket,omitempty"`
+	DataDir        string `json:"data_dir,omitempty"`
+	SkipNetworking bool   `json:"skip_networking,omitempty"`
+}
+
 type SupervisorProgram struct {
 	ConfigPath string `json:"config_path"`
 	Name       string `json:"name"`
