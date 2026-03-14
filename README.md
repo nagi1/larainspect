@@ -80,6 +80,14 @@ Homebrew tap automation is the next package-manager priority after the first pub
 ## Quick start
 
 ```bash
+larainspect setup
+larainspect audit
+```
+
+If you want a config file first, start here:
+
+```bash
+larainspect init
 larainspect audit
 ```
 
@@ -109,6 +117,16 @@ Prompts you for missing info (app path, scope) without breaking automation defau
 
 ```bash
 larainspect audit --interactive
+```
+
+### Bootstrap a config file
+
+```bash
+# write a starter config in the current directory
+larainspect init
+
+# detect aaPanel / Forge / DigitalOcean / cPanel / common VPS layouts
+larainspect setup
 ```
 
 ### Export reports
@@ -192,6 +210,13 @@ fi
 ## Configuration
 
 Larainspect works with zero config. For recurring audits, drop a config file and it auto-loads:
+
+To generate one instead of writing it by hand:
+
+```bash
+larainspect init
+larainspect setup
+```
 
 **Search order:** `larainspect.yaml` → `larainspect.yml` → `.larainspect.yaml` → `.larainspect.yml` → `larainspect.json` → `.larainspect.json` → `/etc/larainspect/config.yaml` → `/etc/larainspect/config.json`
 

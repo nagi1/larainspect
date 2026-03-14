@@ -137,7 +137,7 @@ func TestOperationalHardeningCheckReportsRuntimeSSHAccessAndDeployBoundaryCollap
 	}
 
 	finding := result.Findings[0]
-	if finding.Title != "Laravel runtime identity has SSH key-based access configured" || finding.Severity != model.SeverityHigh {
+	if finding.Title != "Laravel runtime user can log in over SSH" || finding.Severity != model.SeverityHigh {
 		t.Fatalf("unexpected finding %+v", finding)
 	}
 }
@@ -173,7 +173,7 @@ func TestOperationalHardeningCheckReportsWildcardAndSensitiveSudoRules(t *testin
 	if result.Findings[0].Severity != model.SeverityCritical {
 		t.Fatalf("expected wildcard nopasswd sudo to be critical, got %+v", result.Findings[0])
 	}
-	if result.Findings[1].Title != "Operational principal can run sensitive sudo commands without a password" {
+	if result.Findings[1].Title != "Operational user can run sensitive sudo commands without a password" {
 		t.Fatalf("expected sensitive nopasswd sudo finding, got %+v", result.Findings[1])
 	}
 }
@@ -254,11 +254,11 @@ func TestOperationalHardeningCheckReportsCollapsedDeployRuntimeSSHIdentity(t *te
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	runtimeSSHFinding := firstFindingByTitle(result.Findings, "Laravel runtime identity has SSH key-based access configured")
+	runtimeSSHFinding := firstFindingByTitle(result.Findings, "Laravel runtime user can log in over SSH")
 	if runtimeSSHFinding.Title == "" {
 		t.Fatalf("expected runtime ssh finding, got %+v", result.Findings)
 	}
-	if runtimeSSHFinding.Why == "" || !strings.Contains(runtimeSSHFinding.Why, "same identity appears to own deployment access") {
+	if runtimeSSHFinding.Why == "" || !strings.Contains(runtimeSSHFinding.Why, "same account appears to handle deployment") {
 		t.Fatalf("expected collapsed identity explanation, got %+v", runtimeSSHFinding)
 	}
 }

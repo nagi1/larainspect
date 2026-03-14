@@ -13,6 +13,8 @@ func TestRootHelp(t *testing.T) {
 		Banner(),
 		"Read-only Laravel VPS auditor for operators under pressure.",
 		"Safety promises:",
+		"larainspect init",
+		"larainspect setup",
 		"larainspect audit --interactive",
 	} {
 		if !strings.Contains(help, want) {
@@ -34,6 +36,37 @@ func TestAuditHelp(t *testing.T) {
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("expected audit help to contain %q, got %q", want, help)
+		}
+	}
+}
+
+func TestInitHelp(t *testing.T) {
+	t.Parallel()
+
+	help := InitHelp()
+	for _, want := range []string{
+		"Write a starter larainspect.yaml",
+		"--path string",
+		"--preset string",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("expected init help to contain %q, got %q", want, help)
+		}
+	}
+}
+
+func TestSetupHelp(t *testing.T) {
+	t.Parallel()
+
+	help := SetupHelp()
+	for _, want := range []string{
+		"Detect a likely hosting preset",
+		"Supported presets:",
+		"aapanel",
+		"cpanel",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("expected setup help to contain %q, got %q", want, help)
 		}
 	}
 }

@@ -39,17 +39,17 @@ func (OperationalNetworkCheck) Run(_ context.Context, execution model.ExecutionC
 
 		switch {
 		case listenerHasAnyProcessName(listener, "redis-server") || listener.LocalPort == "6379":
-			findings = append(findings, buildBroadListenerFinding(listener, "Redis listens on a broad network address", "Broad Redis exposure can hand session data, queues, and cache-backed secrets to remote attackers or adjacent tenants.", "Bind Redis to loopback or a tightly scoped private address and restrict access with network controls."))
+			findings = append(findings, buildBroadListenerFinding(listener, "Redis is reachable on all network interfaces", "A broadly exposed Redis service can hand sessions, queues, and cached secrets to unintended systems or attackers on the network.", "Bind Redis to loopback or a tightly scoped private address and restrict access with firewall or network controls."))
 		case listenerHasAnyProcessName(listener, "mysqld", "mariadbd") || listener.LocalPort == "3306":
-			findings = append(findings, buildBroadListenerFinding(listener, "MySQL listens on a broad network address", "Broad MySQL exposure turns credential reuse or weak grants into remote database compromise paths.", "Restrict MySQL to loopback or an explicitly trusted internal address and keep public exposure behind intentional controls only."))
+			findings = append(findings, buildBroadListenerFinding(listener, "MySQL is reachable on all network interfaces", "A broadly exposed MySQL service turns weak passwords, leaked credentials, or overly broad grants into remote database access.", "Restrict MySQL to loopback or an explicitly trusted internal address and keep public exposure behind intentional controls only."))
 		case listenerHasAnyProcessName(listener, "postgres") || listener.LocalPort == "5432":
-			findings = append(findings, buildBroadListenerFinding(listener, "Postgres listens on a broad network address", "Broad Postgres exposure increases remote attack surface and makes lateral movement through database credentials easier.", "Bind Postgres to loopback or a tightly scoped private address and review host-based access rules."))
+			findings = append(findings, buildBroadListenerFinding(listener, "Postgres is reachable on all network interfaces", "A broadly exposed Postgres service is easier to probe remotely and makes leaked database credentials more dangerous.", "Bind Postgres to loopback or a tightly scoped private address and review host-based access rules."))
 		case listenerHasAnyProcessName(listener, "php-fpm", "php-fpm8.3", "php-fpm8.2") || listener.LocalPort == "9000":
-			findings = append(findings, buildBroadListenerFinding(listener, "PHP-FPM appears reachable on a broad TCP listener", "Broad PHP-FPM TCP listeners weaken the intended local trust boundary and increase the chance of direct request injection against the PHP runtime.", "Prefer a Unix socket for local integration or restrict PHP-FPM TCP listeners to loopback or a tightly controlled private address."))
+			findings = append(findings, buildBroadListenerFinding(listener, "PHP-FPM is reachable on a network port outside the local host", "A broadly reachable PHP-FPM port exposes the PHP runtime directly instead of keeping it behind the local web server.", "Prefer a Unix socket for local integration or restrict PHP-FPM TCP listeners to loopback or a tightly controlled private address."))
 		case listenerHasAnyProcessName(listener, "php") && (listener.LocalPort == "8000" || listener.LocalPort == "8080"):
-			findings = append(findings, buildBroadListenerFinding(listener, "A likely development server is listening on a broad network address", "Accidental development servers bypass the intended Nginx and PHP-FPM boundary and often expose debugging behavior or inconsistent routing.", "Shut down the development server and serve Laravel only through the intended production web stack."))
+			findings = append(findings, buildBroadListenerFinding(listener, "A likely development server is reachable on all network interfaces", "An accidental development server bypasses the normal Nginx and PHP-FPM boundary and may expose debug behavior or incomplete routing rules.", "Shut down the development server and serve Laravel only through the intended production web stack."))
 		case (listener.LocalPort == "6001" || listener.LocalPort == "6002") && (listenerHasAnyProcessName(listener, "node", "php") || len(listener.ProcessNames) == 0):
-			findings = append(findings, buildBroadListenerFinding(listener, "An app-adjacent realtime or websocket service listens broadly", "Broad realtime or websocket listeners such as Reverb, Soketi, or Octane-adjacent services increase the exposed Laravel attack surface when they are not intentionally scoped.", "Bind realtime services to the intended interface only and confirm they sit behind the expected reverse-proxy and auth boundary."))
+			findings = append(findings, buildBroadListenerFinding(listener, "A realtime or websocket service is reachable on all network interfaces", "A broadly exposed realtime service increases the public attack surface around the app when it is not intentionally scoped behind the expected proxy and auth boundary.", "Bind realtime services to the intended interface only and confirm they sit behind the expected reverse proxy and authentication boundary."))
 		}
 	}
 
@@ -92,11 +92,11 @@ func buildBroadListenerFinding(listener model.ListenerRecord, title string, why 
 
 func buildSupervisorHTTPExposureFinding(server model.SupervisorHTTPServer) model.Finding {
 	severity := model.SeverityHigh
-	why := "Supervisor's HTTP control surface should stay on loopback or another tightly scoped management address because it exposes process-management capabilities."
-	remediation := "Bind Supervisor inet_http_server to loopback only or remove it entirely; if it must exist, require strong authentication."
+	why := "Supervisor's web control panel can start, stop, and manage processes, so it should stay on loopback or another tightly scoped management address."
+	remediation := "Bind Supervisor inet_http_server to 127.0.0.1 only or remove it entirely. If it must exist, place it behind trusted network controls and strong authentication."
 	if !server.PasswordConfigured {
 		severity = model.SeverityCritical
-		why = "A broadly bound Supervisor HTTP control surface without a configured password can expose process-management access to unintended clients."
+		why = "Supervisor's web control panel is exposed on a broad address without a password, so unintended clients may be able to manage processes directly."
 	}
 
 	evidence := []model.Evidence{
@@ -116,7 +116,7 @@ func buildSupervisorHTTPExposureFinding(server model.SupervisorHTTPServer) model
 		Class:       model.FindingClassDirect,
 		Severity:    severity,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Supervisor HTTP control surface is broadly exposed",
+		Title:       "Supervisor web control panel is exposed on a broad address",
 		Why:         why,
 		Remediation: remediation,
 		Evidence:    evidence,

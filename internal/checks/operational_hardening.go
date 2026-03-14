@@ -38,9 +38,9 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 				Class:       model.FindingClassDirect,
 				Severity:    model.SeverityHigh,
 				Confidence:  model.ConfidenceConfirmed,
-				Title:       "SSH allows direct root login",
-				Why:         "Direct root SSH login increases the chance that credential theft or key misuse immediately becomes full host compromise.",
-				Remediation: "Disable direct root SSH login where practical and use a dedicated deploy or admin user with narrowly reviewed escalation instead.",
+				Title:       "Server allows direct SSH login as root",
+				Why:         "If a root key or password is stolen, the attacker gets full control of the server immediately. A separate admin account adds a review and escalation boundary.",
+				Remediation: "Disable direct root SSH login where practical. Use a dedicated admin or deploy user and grant elevation only through reviewed sudo rules.",
 				Evidence: []model.Evidence{
 					{Label: "config", Detail: sshConfig.Path},
 					{Label: "permit_root_login", Detail: sshConfig.PermitRootLogin},

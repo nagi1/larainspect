@@ -19,12 +19,16 @@ Safety promises:
   - stays usable in automation and optional guided mode
 
 Usage:
+  larainspect init [flags]
+  larainspect setup [flags]
   larainspect audit [flags]
   larainspect controls [flags]
   larainspect help
   larainspect version
 
 Quick start:
+  larainspect init
+  larainspect setup
   larainspect audit
   larainspect audit --scope app --app-path /var/www/shop
   larainspect audit --config /etc/larainspect/config.yaml
@@ -35,12 +39,69 @@ Quick start:
 Commands:
   audit     Run the read-only audit workflow
   controls  List normalized external security controls and check mappings
+  init      Write a starter larainspect.yaml in the current directory
+  setup     Detect a hosting preset and generate a tuned larainspect.yaml
   help      Show command help
   version   Print the development version
 
 Learn more:
+  Use 'larainspect init --help' for quick config bootstrapping.
+  Use 'larainspect setup --help' for guided config generation with preset detection.
   Use 'larainspect audit --help' for flags, onboarding, interactive guidance, and exit codes.
   Use 'larainspect controls --help' to inspect the normalized external control map.
+`
+}
+
+func InitHelp() string {
+	return `larainspect init
+
+Write a starter larainspect.yaml in the current directory.
+
+This command is intentionally simple: it writes a safe default config file and
+does not inspect the host beyond lightweight local hints such as the current
+working directory and hostname.
+
+Usage:
+  larainspect init [flags]
+
+Examples:
+  larainspect init
+  larainspect init --path .larainspect.yaml
+  larainspect init --preset aapanel
+
+Flags:
+  --path string      Output path for the generated config (default "larainspect.yaml")
+  --preset string    Optional preset: forge, digitalocean, aapanel, cpanel, or vps
+`
+}
+
+func SetupHelp() string {
+	return `larainspect setup
+
+Detect a likely hosting preset and generate a tuned larainspect.yaml.
+
+The setup flow first checks for common environment markers such as aaPanel,
+Forge, DigitalOcean, and cPanel paths. When detection is not confident, it asks
+you a few focused questions and writes the config file for you.
+
+Usage:
+  larainspect setup [flags]
+
+Examples:
+  larainspect setup
+  larainspect setup --path .larainspect.yaml
+  larainspect setup --preset forge
+
+Supported presets:
+  forge
+  digitalocean
+  aapanel
+  cpanel
+  vps
+
+Flags:
+  --path string      Output path for the generated config (default "larainspect.yaml")
+  --preset string    Skip auto-detection and force a preset
 `
 }
 

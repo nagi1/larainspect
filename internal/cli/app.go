@@ -96,6 +96,8 @@ func (app App) newRootCommand(ctx context.Context) *cobra.Command {
 	})
 
 	rootCmd.AddCommand(app.newAuditCommand(ctx))
+	rootCmd.AddCommand(app.newInitCommand())
+	rootCmd.AddCommand(app.newSetupCommand())
 	rootCmd.AddCommand(app.newControlsCommand())
 	rootCmd.AddCommand(app.newVersionCommand())
 

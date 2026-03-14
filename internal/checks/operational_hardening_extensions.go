@@ -29,7 +29,7 @@ func collectRuntimeSSHAccessFindings(snapshot model.Snapshot, sshAccountsByUser 
 				Class:       model.FindingClassHeuristic,
 				Severity:    model.SeverityHigh,
 				Confidence:  model.ConfidenceProbable,
-				Title:       "Laravel runtime identity has SSH key-based access configured",
+				Title:       "Laravel runtime user can log in over SSH",
 				Why:         why,
 				Remediation: remediation,
 				Evidence:    evidence,
@@ -46,12 +46,12 @@ func collectRuntimeSSHAccessFindings(snapshot model.Snapshot, sshAccountsByUser 
 
 func runtimeSSHBoundaryNarrative(deployUsers []string, runtimeUser string) (string, string) {
 	if containsString(deployUsers, runtimeUser) {
-		return "The same identity appears to own deployment access, SSH login capability, and Laravel runtime duties, so a single credential can cross operator and runtime boundaries.",
-			"Separate deploy SSH access from PHP-FPM and worker runtime identities so deployment credentials cannot directly become live application execution."
+		return "The same account appears to handle deployment, SSH access, and app runtime work. If that one credential is compromised, an attacker can move directly from app access to server administration.",
+			"Use separate accounts for SSH administration and deploy work versus PHP-FPM and worker runtime. The runtime user should not have an interactive SSH key."
 	}
 
-	return "SSH key-based access for a Laravel runtime identity collapses the separation between operator access and the live application execution boundary.",
-		"Keep SSH access on a distinct deploy or admin identity and run PHP-FPM, workers, and schedulers under a separate runtime account."
+	return "Giving the Laravel runtime user SSH access removes the separation between day-to-day server access and the account that executes the app.",
+		"Keep SSH access on a distinct deploy or admin account and run PHP-FPM, workers, and schedulers under a separate runtime account."
 }
 
 func runtimeSSHAccessEvidence(app model.LaravelApp, snapshot model.Snapshot, runtimeUser string, account model.SSHAccount) []model.Evidence {
@@ -83,9 +83,9 @@ func buildOperationalSudoFinding(rule model.SudoRule, sshAccountsByUser map[stri
 		Class:       model.FindingClassHeuristic,
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceProbable,
-		Title:       "Operational principal can run sensitive sudo commands without a password",
-		Why:         "Passwordless sudo for service-control, deploy, or filesystem mutation commands lowers the barrier between a compromised operational account and host-level changes around the Laravel boundary.",
-		Remediation: "Keep NOPASSWD off sensitive operational commands where practical and require exact reviewed command allowlists for unavoidable elevation paths.",
+		Title:       "Operational user can run sensitive sudo commands without a password",
+		Why:         "Passwordless sudo for service control, deploy, or file-changing commands makes it much easier for a compromised operational account to change the host immediately.",
+		Remediation: "Avoid NOPASSWD for sensitive commands where practical, and keep any remaining sudo access on a short, reviewed allowlist of exact commands.",
 		Evidence:    evidence,
 		Affected:    []model.Target{{Type: "path", Path: rule.Path}},
 	}, true
@@ -121,9 +121,9 @@ func newBroadSudoFinding(rule model.SudoRule, evidence []model.Evidence) model.F
 		Class:       model.FindingClassDirect,
 		Severity:    sudoRuleSeverity(rule),
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Operational principal has broad sudo access",
-		Why:         "Broad sudo for deploy or runtime-adjacent identities weakens separation between deploy, app runtime, and host administration duties.",
-		Remediation: "Limit sudo to exact operational commands that are genuinely required and avoid granting ALL privileges to deploy or web-adjacent identities.",
+		Title:       "Operational user has unrestricted sudo access",
+		Why:         "This account can become root for essentially anything. If the account is misused or compromised, the separation between deploy work, app runtime, and full server administration disappears.",
+		Remediation: "Replace broad sudo access with a short allowlist of the exact commands this user truly needs. Do not grant ALL to deploy or web-adjacent accounts.",
 		Evidence:    evidence,
 		Affected:    []model.Target{{Type: "path", Path: rule.Path}},
 	}
@@ -136,9 +136,9 @@ func newWildcardSudoFinding(rule model.SudoRule, evidence []model.Evidence) mode
 		Class:       model.FindingClassDirect,
 		Severity:    sudoRuleSeverity(rule),
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Operational principal has wildcard sudo command allowance",
-		Why:         "Wildcard sudo command patterns make it much easier for deploy or runtime-adjacent identities to expand a narrowly intended host action into broader privilege use.",
-		Remediation: "Replace wildcard sudo command patterns with exact command allowlists for the few operational actions that are genuinely required.",
+		Title:       "Operational user has wildcard sudo rules",
+		Why:         "Wildcard sudo rules make it easy for a user to run more commands than intended, especially as file names, service names, or arguments change over time.",
+		Remediation: "Replace wildcard patterns with explicit command paths and fixed arguments for the few elevated actions this user actually needs.",
 		Evidence:    evidence,
 		Affected:    []model.Target{{Type: "path", Path: rule.Path}},
 	}

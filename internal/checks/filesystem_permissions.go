@@ -75,14 +75,14 @@ func buildWorldWritablePathsFinding(app model.LaravelApp) (model.Finding, bool) 
 	evidence, affected := collectPathEvidenceAndTargets(app, worldWritableRecords)
 
 	severity := model.SeverityHigh
-	title := "Sensitive Laravel paths are world-writable"
-	why := "World-writable code or configuration lets any local account change application behavior, code, or secrets."
-	remediation := "Remove world-write permissions from the affected paths and keep writable access limited to the intended deploy or runtime identities."
+	title := "Sensitive Laravel paths can be changed by any local user"
+	why := "If code or configuration is world-writable, any local account or compromised process on the server can change app behavior, code, or secrets."
+	remediation := "Remove world-write permissions and keep write access limited to the specific deploy or runtime user that actually needs it."
 	if criticalSeverity {
 		severity = model.SeverityCritical
-		title = ".env or other sensitive Laravel paths are world-writable"
-		why = "A world-writable .env or code path lets untrusted local users or a compromised process change secrets and execution behavior directly."
-		remediation = "Make .env writable only by the intended deploy or root identity and remove world-write permissions from all application paths."
+		title = "Any local user can change .env or other critical app files"
+		why = "If .env or core code paths are world-writable, secrets and execution behavior can be changed directly, turning a local foothold into full app compromise."
+		remediation = "Make .env and core app files writable only by the intended deploy or root user, and remove world-write access from the rest of the app tree."
 	}
 
 	return model.Finding{

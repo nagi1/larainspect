@@ -33,6 +33,12 @@ func TestAppPrintsRootHelp(t *testing.T) {
 	if !strings.Contains(stdout.String(), "larainspect controls [flags]") {
 		t.Fatalf("expected controls command in root help, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "larainspect init [flags]") {
+		t.Fatalf("expected init command in root help, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "larainspect setup [flags]") {
+		t.Fatalf("expected setup command in root help, got %q", stdout.String())
+	}
 
 	if !strings.Contains(stdout.String(), "Safety promises:") {
 		t.Fatalf("expected safety help section, got %q", stdout.String())

@@ -320,7 +320,7 @@ func TestOperationalDeployCheckCorrelatesPostDeployDrift(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if !findingTitleExists(result.Findings, "Post-deploy drift weakens Laravel ownership or writable-path boundaries") {
+	if !findingTitleExists(result.Findings, "Deployment left Laravel ownership or writable paths in an unsafe state") {
 		t.Fatalf("expected post-deploy drift finding, got %+v", result.Findings)
 	}
 }
@@ -370,7 +370,7 @@ func TestOperationalDeployCheckCorrelatesPostRestoreDrift(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if !findingTitleExists(result.Findings, "Post-restore drift weakens Laravel ownership, shared-path, or recovery boundaries") {
+	if !findingTitleExists(result.Findings, "Restore left Laravel ownership or shared paths in an unsafe state") {
 		t.Fatalf("expected post-restore drift finding, got %+v", result.Findings)
 	}
 }

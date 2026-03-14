@@ -44,21 +44,21 @@ func TestSourceSecurityCheckReportsWardInspiredSecuritySignals(t *testing.T) {
 	}
 
 	for _, title := range []string{
-		"loginUsingId() authenticates from a variable",
+		"Code logs users in without a password from variable input",
 		"Model uses an empty $guarded list",
-		"Upload validation allows executable file types",
-		"Upload validation allows SVG or HTML content",
+		"File upload rules allow server-executable files",
+		"File upload rules allow HTML or SVG files",
 		"Upload validation shows a file rule without obvious type or size constraints",
 		"Source contains phpinfo()",
 		"Source contains dd()",
 		"Source contains debug output helpers",
 		"Blade template renders request data through raw output",
 		"Blade template interpolates a PHP variable inside a script block",
-		"DB::raw() uses a variable or interpolation",
-		"Direct SQL call concatenates a variable into query text",
-		"Source calls a shell execution primitive",
-		"Source uses eval()",
-		"Source unserializes a variable directly",
+		"Raw SQL fragment is built from variable input",
+		"Direct SQL statement is assembled with string concatenation",
+		"Code runs shell commands with application input",
+		"Code executes dynamic PHP with eval()",
+		"Code unserializes data from a variable",
 	} {
 		if !findingTitleExists(result.Findings, title) {
 			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
