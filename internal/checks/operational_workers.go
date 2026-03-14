@@ -80,9 +80,9 @@ func buildStaleReleaseWorkerFinding(record operationalCommandRecord, apps []mode
 					Class:       model.FindingClassDirect,
 					Severity:    model.SeverityHigh,
 					Confidence:  model.ConfidenceConfirmed,
-					Title:       "Worker or scheduler still points at a previous release path",
-					Why:         "Service definitions that keep running an older release break deploy expectations and can retain stale code, config, or permissions after a rollout.",
-					Remediation: "Point workers and schedulers at the current release path or a stable current/ symlink and restart them as part of the deploy flow.",
+					Title:       "Worker or scheduler still uses an old release path",
+					Why:         "If a worker or scheduler still points at an older release, it may keep running stale code or stale configuration after deploy.",
+					Remediation: "Point workers and schedulers at the current release path or a stable current/ symlink, then restart them as part of deployment.",
 					Evidence:    commandEvidence(record),
 					Affected: []model.Target{
 						appTarget(app),
@@ -98,10 +98,10 @@ func buildStaleReleaseWorkerFinding(record operationalCommandRecord, apps []mode
 
 func buildRootWorkerFinding(record operationalCommandRecord, apps []model.LaravelApp) model.Finding {
 	title := "Queue worker runs as root"
-	why := "Root-run queue workers turn Laravel job execution into a host-level compromise path much more easily."
+	why := "If a queue job or one of its dependencies is compromised, running the worker as root makes full server compromise much easier."
 	if commandLooksLikeHorizon(record.Command) {
 		title = "Horizon runs as root"
-		why = "Root-run Horizon workers let queue compromise spill into host administration boundaries more easily than a scoped app user."
+		why = "If Horizon is compromised while running as root, the attack can reach full server administration much more easily."
 	}
 
 	return model.Finding{
@@ -112,7 +112,7 @@ func buildRootWorkerFinding(record operationalCommandRecord, apps []model.Larave
 		Confidence:  model.ConfidenceConfirmed,
 		Title:       title,
 		Why:         why,
-		Remediation: "Run queue workers and Horizon under the intended non-root app runtime user and keep deploy or administration work on separate identities.",
+		Remediation: "Run queue workers and Horizon under the intended non-root app user, and keep deploy or administration work on separate accounts.",
 		Evidence:    commandEvidence(record),
 		Affected:    compactAppTargets(apps),
 	}
@@ -126,8 +126,8 @@ func buildRootSchedulerFinding(record operationalCommandRecord, apps []model.Lar
 		Severity:    model.SeverityCritical,
 		Confidence:  model.ConfidenceConfirmed,
 		Title:       "Laravel scheduler runs as root",
-		Why:         "Root-run schedule tasks can create root-owned files, permission drift, and a much wider blast radius if artisan commands are abused.",
-		Remediation: "Run schedule:run or schedule:work as the intended app runtime or deploy user, not root.",
+		Why:         "If scheduled tasks run as root, they can leave behind root-owned files and make mistakes or abuse much more damaging.",
+		Remediation: "Run schedule:run or schedule:work as the intended app or deploy user, not root.",
 		Evidence:    commandEvidence(record),
 		Affected:    compactAppTargets(apps),
 	}
@@ -147,8 +147,8 @@ func buildDuplicateSchedulerFinding(app model.LaravelApp, records []operationalC
 		Class:       model.FindingClassDirect,
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Laravel app has multiple scheduler definitions",
-		Why:         "Duplicate schedulers can run the same tasks multiple times, create permission drift, and make operational behavior hard to trust during incidents.",
+		Title:       "Laravel app has more than one scheduler configured",
+		Why:         "If more than one scheduler is active, the same job may run multiple times and create confusing behavior during normal operation or incidents.",
 		Remediation: "Keep exactly one production scheduler definition per Laravel app and remove duplicate cron, systemd, or Supervisor entries.",
 		Evidence:    evidence,
 		Affected: []model.Target{

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nagi1/larainspect/internal/model"
 )
 
 func TestDetectHostingPresetRecognizesAAPanel(t *testing.T) {
@@ -37,6 +39,14 @@ func TestBuildGeneratedConfigForAAPanelAddsPanelBinaries(t *testing.T) {
 
 	inspector := hostInspector{
 		hostname: func() (string, error) { return "panel-host", nil },
+		stat: func(path string) (fs.FileInfo, error) {
+			switch path {
+			case "/www/server/nginx/sbin/nginx", "/www/server/panel/pyenv/bin/supervisord":
+				return fakeExecutableInfo{name: filepath.Base(path)}, nil
+			default:
+				return nil, fs.ErrNotExist
+			}
+		},
 		glob: func(pattern string) ([]string, error) {
 			if pattern == "/www/server/php/*/sbin/php-fpm" {
 				return []string{"/www/server/php/85/sbin/php-fpm", "/www/server/php/83/sbin/php-fpm"}, nil
@@ -48,6 +58,9 @@ func TestBuildGeneratedConfigForAAPanelAddsPanelBinaries(t *testing.T) {
 	config := buildGeneratedConfig(presetAAPanel, inspector, generatedAnswers{})
 	if config.Profile.Commands.NginxBinary != "/www/server/nginx/sbin/nginx" {
 		t.Fatalf("unexpected nginx binary %q", config.Profile.Commands.NginxBinary)
+	}
+	if config.Profile.Commands.SupervisorBinary != "/www/server/panel/pyenv/bin/supervisord" {
+		t.Fatalf("unexpected supervisor binary %q", config.Profile.Commands.SupervisorBinary)
 	}
 	if len(config.Profile.Commands.PHPFPMBinaries) != 2 {
 		t.Fatalf("expected php-fpm binaries, got %+v", config.Profile.Commands.PHPFPMBinaries)
@@ -198,3 +211,12 @@ func (info fakeFileInfo) Mode() fs.FileMode  { return 0o755 }
 func (info fakeFileInfo) ModTime() time.Time { return time.Time{} }
 func (info fakeFileInfo) IsDir() bool        { return true }
 func (info fakeFileInfo) Sys() any           { return nil }
+
+type fakeExecutableInfo struct{ name string }
+
+func (info fakeExecutableInfo) Name() string       { return info.name }
+func (info fakeExecutableInfo) Size() int64        { return 0 }
+func (info fakeExecutableInfo) Mode() fs.FileMode  { return 0o755 }
+func (info fakeExecutableInfo) ModTime() time.Time { return time.Time{} }
+func (info fakeExecutableInfo) IsDir() bool        { return false }
+func (info fakeExecutableInfo) Sys() any           { return nil }

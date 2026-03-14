@@ -23,7 +23,7 @@ func TestPHPFPMSecurityCheckReportsLoopbackTCPPreferenceGap(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM pool uses loopback TCP instead of a Unix socket" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM uses a local TCP port instead of a Unix socket" {
 		t.Fatalf("expected loopback TCP finding, got %+v", result.Findings)
 	}
 }
@@ -44,7 +44,7 @@ func TestPHPFPMSecurityCheckReportsMissingSocketACL(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM Unix socket does not declare an explicit owner and group" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM socket owner and group are not set explicitly" {
 		t.Fatalf("expected missing socket ACL finding, got %+v", result.Findings)
 	}
 }
@@ -68,7 +68,7 @@ func TestPHPFPMSecurityCheckReportsSocketModeBeyond0660(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM socket permissions are too broad" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM socket is accessible to more users than needed" {
 		t.Fatalf("expected broad socket mode finding, got %+v", result.Findings)
 	}
 }
@@ -92,7 +92,7 @@ func TestPHPFPMSecurityCheckReportsCollapsedSocketBoundary(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM socket ACL mirrors the runtime identity" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "PHP-FPM socket uses the same user or group as the PHP runtime" {
 		t.Fatalf("expected collapsed socket boundary finding, got %+v", result.Findings)
 	}
 }
@@ -117,7 +117,7 @@ func TestPHPFPMSecurityCheckReportsInheritedServiceEnvironment(t *testing.T) {
 	if len(result.Findings) != 2 {
 		t.Fatalf("expected inherited-environment and missing-socket-acl findings, got %+v", result.Findings)
 	}
-	if !findingTitleExists(result.Findings, "PHP-FPM pool inherits the parent service environment") {
+	if !findingTitleExists(result.Findings, "PHP-FPM workers inherit the parent service environment") {
 		t.Fatalf("expected inherited environment finding, got %+v", result.Findings)
 	}
 }
@@ -156,7 +156,7 @@ func TestPHPFPMSecurityCheckReportsSocketACLDriftFromObservedNginxIdentity(t *te
 	if len(result.Findings) != 2 {
 		t.Fatalf("expected socket boundary drift and collapsed boundary findings, got %+v", result.Findings)
 	}
-	if !findingTitleExists(result.Findings, "PHP-FPM socket ACL does not align with the observed Nginx identity") {
+	if !findingTitleExists(result.Findings, "Web server user does not match PHP-FPM socket permissions") {
 		t.Fatalf("expected observed nginx socket-boundary finding, got %+v", result.Findings)
 	}
 }
@@ -195,7 +195,7 @@ func TestPHPFPMSecurityCheckIgnoresRootOnlyNginxServiceIdentity(t *testing.T) {
 	if len(result.Findings) != 1 {
 		t.Fatalf("expected only collapsed socket boundary finding, got %+v", result.Findings)
 	}
-	if result.Findings[0].Title != "PHP-FPM socket ACL mirrors the runtime identity" {
+	if result.Findings[0].Title != "PHP-FPM socket uses the same user or group as the PHP runtime" {
 		t.Fatalf("expected collapsed socket boundary finding, got %+v", result.Findings)
 	}
 }

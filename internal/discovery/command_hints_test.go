@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nagi1/larainspect/internal/model"
 )
@@ -121,6 +122,34 @@ func TestCommandHintUnknownsSkipsWhenCommandResolvesOrNoEvidenceExists(t *testin
 	}
 }
 
+func TestCommandHintUnknownsSkipWhenAAPanelFallbackBinaryExists(t *testing.T) {
+	t.Parallel()
+
+	service := newTestSnapshotService()
+	service.commandsEnabled = true
+	service.lookPath = func(name string) (string, error) {
+		return "", fs.ErrNotExist
+	}
+	service.statPath = func(path string) (fs.FileInfo, error) {
+		switch path {
+		case "/www/server/nginx/sbin/nginx", "/www/server/php/83/sbin/php-fpm", "/www/server/panel/pyenv/bin/supervisord":
+			return fakeExecutableFileInfo{name: path}, nil
+		default:
+			return nil, fs.ErrNotExist
+		}
+	}
+
+	if unknowns := service.commandHintUnknowns(appDiscoveryCheckID, "a", "b", "key", "label", []string{"nginx"}, []string{"/www/server/nginx/conf/nginx.conf"}); len(unknowns) != 0 {
+		t.Fatalf("expected aaPanel nginx fallback to suppress hint, got %+v", unknowns)
+	}
+	if unknowns := service.commandHintUnknowns(appDiscoveryCheckID, "a", "b", "key", "label", []string{"php-fpm83"}, []string{"/www/server/php/83/etc/php-fpm.conf"}); len(unknowns) != 0 {
+		t.Fatalf("expected aaPanel php-fpm fallback to suppress hint, got %+v", unknowns)
+	}
+	if unknowns := service.commandHintUnknowns(appDiscoveryCheckID, "a", "b", "key", "label", []string{"supervisord"}, []string{"/etc/supervisor/supervisord.conf"}); len(unknowns) != 0 {
+		t.Fatalf("expected aaPanel supervisor fallback to suppress hint, got %+v", unknowns)
+	}
+}
+
 func TestDiscoverNginxSitesFromCommandHandlesErrorBranches(t *testing.T) {
 	t.Parallel()
 
@@ -168,6 +197,42 @@ func TestDiscoverNginxSitesFromCommandHandlesErrorBranches(t *testing.T) {
 		t.Fatalf("expected command evidence, got %+v", unknowns[0])
 	}
 }
+
+func TestDiscoverNginxSitesFromCommandUsesAAPanelFallbackBinary(t *testing.T) {
+	t.Parallel()
+
+	service := newTestSnapshotService()
+	service.commandsEnabled = true
+	service.lookPath = func(name string) (string, error) {
+		return "", fs.ErrNotExist
+	}
+	service.statPath = func(path string) (fs.FileInfo, error) {
+		if path == "/www/server/nginx/sbin/nginx" {
+			return fakeExecutableFileInfo{name: path}, nil
+		}
+		return nil, fs.ErrNotExist
+	}
+	service.runCommand = func(_ context.Context, command model.CommandRequest) (model.CommandResult, error) {
+		if command.Name != "/www/server/nginx/sbin/nginx" {
+			t.Fatalf("expected aaPanel nginx binary, got %+v", command)
+		}
+		return model.CommandResult{ExitCode: 0, Stdout: "server { root /www/wwwroot/shop/current/public; }"}, nil
+	}
+
+	sites, unknowns, ok := service.discoverNginxSitesFromCommand(context.Background())
+	if !ok || len(unknowns) != 0 || len(sites) != 1 {
+		t.Fatalf("expected aaPanel nginx command discovery to succeed, got ok=%v sites=%+v unknowns=%+v", ok, sites, unknowns)
+	}
+}
+
+type fakeExecutableFileInfo struct{ name string }
+
+func (info fakeExecutableFileInfo) Name() string       { return info.name }
+func (info fakeExecutableFileInfo) Size() int64        { return 0 }
+func (info fakeExecutableFileInfo) Mode() fs.FileMode  { return 0o755 }
+func (info fakeExecutableFileInfo) ModTime() time.Time { return time.Time{} }
+func (info fakeExecutableFileInfo) IsDir() bool        { return false }
+func (info fakeExecutableFileInfo) Sys() any           { return nil }
 
 func TestReadConfigFilesFromPatternsSkipsMissingFilesAndReportsReadErrors(t *testing.T) {
 	t.Parallel()

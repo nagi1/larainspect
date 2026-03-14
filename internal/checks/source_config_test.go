@@ -34,13 +34,13 @@ func TestSourceConfigCheckReportsWardInspiredConfigSignals(t *testing.T) {
 	}
 
 	for _, title := range []string{
-		"config/app.php hardcodes debug mode on",
-		"config/session.php disables HttpOnly session cookies",
-		"config/cors.php allows wildcard origins",
-		"config/cors.php combines credentials with wildcard origins",
-		"config/mail.php hardcodes a mail credential",
-		"config/logging.php hardcodes a Slack webhook",
-		".env.example contains credential-like values",
+		"Debug mode is hardcoded on in config/app.php",
+		"Session cookies are readable by JavaScript",
+		"CORS allows any website origin",
+		"CORS allows credentials for any website origin",
+		"Mail password is hardcoded in config/mail.php",
+		"Slack webhook is hardcoded in config/logging.php",
+		".env.example contains real-looking secret values",
 	} {
 		if !findingTitleExists(result.Findings, title) {
 			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
@@ -49,12 +49,12 @@ func TestSourceConfigCheckReportsWardInspiredConfigSignals(t *testing.T) {
 
 	for _, finding := range result.Findings {
 		switch finding.Title {
-		case ".env.example contains credential-like values":
+		case ".env.example contains real-looking secret values":
 			if finding.Class != model.FindingClassHeuristic || finding.Confidence != model.ConfidencePossible {
 				t.Fatalf("expected .env.example finding to stay heuristic/possible, got %+v", finding)
 			}
 		default:
-			if finding.CheckID != "source.config" || (finding.Class != model.FindingClassDirect && finding.Title != ".env.example contains credential-like values") {
+			if finding.CheckID != "source.config" || (finding.Class != model.FindingClassDirect && finding.Title != ".env.example contains real-looking secret values") {
 				t.Fatalf("unexpected finding metadata %+v", finding)
 			}
 		}

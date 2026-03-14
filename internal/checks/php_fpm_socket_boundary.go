@@ -60,9 +60,9 @@ func buildObservedNginxSocketBoundaryFinding(pool model.PHPFPMPool, nginxSites [
 		Class:       model.FindingClassHeuristic,
 		Severity:    model.SeverityMedium,
 		Confidence:  model.ConfidenceProbable,
-		Title:       "PHP-FPM socket ACL does not align with the observed Nginx identity",
-		Why:         "The socket ACL is explicit, but the observed Nginx service user or group is outside that boundary. That usually means the effective web-entry path is drifting from the intended front-end isolation model.",
-		Remediation: "Align listen.owner, listen.group, and listen.mode to the exact Nginx identity that should reach the socket, and keep that boundary separate from the PHP runtime identity where practical.",
+		Title:       "Web server user does not match PHP-FPM socket permissions",
+		Why:         "The configured socket owner, group, or mode does not match the Nginx user or group Larainspect observed, so the web server may not be the only process that can reach PHP-FPM or it may not be able to reach it cleanly.",
+		Remediation: "Set listen.owner, listen.group, and listen.mode to match the exact web server identity that should connect to PHP-FPM, and keep that separate from the PHP runtime account when practical.",
 		Evidence:    evidence,
 		Affected: []model.Target{
 			{Type: "path", Path: pool.ConfigPath},

@@ -43,28 +43,28 @@ func riskyPackageExposureDefinitions() []riskyPackageExposureDefinition {
 	return []riskyPackageExposureDefinition{
 		{
 			PackageName:       "laravel/telescope",
-			Title:             "Laravel Telescope package appears present",
-			Why:               "Telescope can expose requests, queries, jobs, exceptions, and environment details if it is reachable or weakly gated in production.",
-			Remediation:       "Verify Telescope is disabled or tightly gated in production and confirm the dashboard is not reachable without strong operator controls.",
+			Title:             "Laravel Telescope is installed in this app",
+			Why:               "If Telescope is reachable in production, it can reveal requests, queries, jobs, exceptions, and other internal app details.",
+			Remediation:       "Make sure Telescope is disabled in production or locked behind strong operator-only access, and verify its dashboard is not public.",
 			HighWhenInstalled: true,
 		},
 		{
 			PackageName: "barryvdh/laravel-debugbar",
-			Title:       "Laravel Debugbar package appears present",
-			Why:         "Debugbar can expose SQL, timing, route, and exception details that help attackers understand the application internals.",
-			Remediation: "Keep Debugbar out of production builds or prove it is disabled and unreachable in the deployed runtime.",
+			Title:       "Laravel Debugbar is installed in this app",
+			Why:         "If Debugbar is active in production, it can reveal SQL queries, routes, timing data, and exception details.",
+			Remediation: "Keep Debugbar out of production builds or verify it is fully disabled and unreachable in the deployed app.",
 		},
 		{
 			PackageName: "itsgoingd/clockwork",
-			Title:       "Clockwork package appears present",
-			Why:         "Clockwork can expose request timelines, configuration clues, and debugging detail when it remains reachable on production hosts.",
-			Remediation: "Verify Clockwork is not exposed in production and keep its routes or headers tightly restricted when used for diagnostics.",
+			Title:       "Clockwork is installed in this app",
+			Why:         "If Clockwork stays reachable in production, it can reveal request timelines, debug details, and configuration clues.",
+			Remediation: "Verify Clockwork is not exposed in production, and tightly restrict any diagnostic routes or headers if it must be used.",
 		},
 		{
 			PackageName: "spatie/laravel-ignition",
-			Title:       "Ignition package appears present",
-			Why:         "Ignition and related error tooling can expose stack traces, config clues, and exception context when production hardening is incomplete.",
-			Remediation: "Verify the production error handler does not expose Ignition debug surfaces and keep detailed exception tooling out of public reach.",
+			Title:       "Ignition is installed in this app",
+			Why:         "If Ignition or similar error pages are exposed in production, they can reveal stack traces, configuration clues, and exception details.",
+			Remediation: "Verify production error handling does not expose Ignition debug pages and keep detailed exception tooling out of public reach.",
 		},
 	}
 }
@@ -167,9 +167,9 @@ func buildHeuristicFindingForPublicAdminToolArtifacts(app model.LaravelApp, arti
 		Class:       model.FindingClassHeuristic,
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceProbable,
-		Title:       "Public path contains diagnostic or admin tooling",
-		Why:         "Adminer, phpMyAdmin, phpinfo, and similar tools materially expand an attack surface when they remain inside a served path.",
-		Remediation: "Remove diagnostic and database-admin tools from the public tree or place them behind tightly controlled, temporary operational access.",
+		Title:       "Public web path contains admin or diagnostic tools",
+		Why:         "Tools like Adminer, phpMyAdmin, or phpinfo make it much easier for attackers to inspect or control the server when they are left in a public web path.",
+		Remediation: "Remove admin and diagnostic tools from public directories, or expose them only through tightly controlled temporary operator access.",
 		Evidence:    evidence,
 		Affected:    affected,
 	}

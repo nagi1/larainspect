@@ -87,16 +87,16 @@ func buildUnexpectedPublicPHPFinding(app model.LaravelApp, matchedSites []model.
 
 	severity := model.SeverityMedium
 	confidence := model.ConfidenceProbable
-	title := "Served public tree contains PHP files beyond the Laravel front controller"
-	why := "Extra PHP files under the served public tree increase the chance that a dropped webshell, probe, or forgotten maintenance script becomes reachable if the web boundary drifts or allows generic PHP handling."
+	title := "Public web directory contains extra PHP files beyond index.php"
+	why := "Extra PHP files in the public web directory are easy to forget and may become reachable if the web server configuration drifts."
 	remediation := "Keep only the intended front controller under public/ where practical, remove unexpected PHP files, and restrict Nginx PHP handling to /index.php only."
 	phpBoundary := "front-controller-only PHP handling detected"
 
 	if anySiteAllowsGenericPHPExecution(matchedSites) {
 		severity = model.SeverityHigh
 		confidence = model.ConfidenceConfirmed
-		title = "Served public tree contains PHP files that Nginx may execute directly"
-		why = "Dropped PHP files under the served public tree can execute as webshells or maintenance backdoors when the site allows generic PHP handling instead of limiting execution to the Laravel front controller."
+		title = "Public web directory contains PHP files Nginx may execute directly"
+		why = "If Nginx allows generic PHP handling, extra PHP files in the public web directory may run as code instead of being blocked."
 		phpBoundary = "generic PHP handling present"
 	}
 
@@ -311,19 +311,19 @@ type publicStorageBoundarySummary struct {
 
 func summarizePublicStorageBoundary(app model.LaravelApp, matchedSites []model.NginxSite) publicStorageBoundarySummary {
 	summary := publicStorageBoundarySummary{
-		title:      "public/storage symlink exists and should be reviewed as a public boundary",
-		why:        "Laravel's storage:link pattern intentionally exposes the public disk through a symlink under public/, so operators should review which files are written there and whether the served web boundary makes that exposure intentional.",
+		title:      "public/storage exposes files through the web path and should be reviewed",
+		why:        "Laravel's storage:link feature makes files on the public disk reachable under public/storage, so anything written there should be treated as intentionally public.",
 		severity:   model.SeverityInformational,
 		confidence: model.ConfidenceConfirmed,
 		evidence: []model.Evidence{{
 			Label:  "exposure",
-			Detail: "Laravel public-disk files are exposed through the public/storage symlink when the app public directory is served.",
+			Detail: "Files written to Laravel's public disk are exposed through public/storage when the app public directory is served.",
 		}},
 	}
 	if len(matchedSites) == 0 {
 		summary.evidence = append(summary.evidence, model.Evidence{
 			Label:  "note",
-			Detail: "No matched Nginx site was discovered for this app, so Larainspect could not confirm how the public directory is served from host config.",
+				Detail: "No matching Nginx site was found for this app, so Larainspect could not confirm exactly how the public directory is served.",
 		})
 		return summary
 	}
@@ -352,14 +352,14 @@ func summarizePublicStorageBoundary(app model.LaravelApp, matchedSites []model.N
 	)
 
 	if publicRootConfirmed {
-		summary.title = "public/storage exposes Laravel public-disk files through the web root"
-		summary.why = "Laravel's storage:link pattern intentionally makes files on the public disk reachable under the served public directory, so uploads or generated assets placed there are public by design and should be reviewed as an explicit exposure boundary."
+		summary.title = "public/storage makes public-disk files reachable over the web"
+		summary.why = "Files written to Laravel's public disk are reachable from the served public directory by design, so uploads or generated files placed there should be reviewed as intentionally public."
 		summary.severity = model.SeverityLow
 		return summary
 	}
 
-	summary.title = "public/storage exists inside a served Laravel tree"
-	summary.why = "The public/storage symlink exists and Larainspect found a served Laravel site for this app, but the docroot is not the expected public/ path. Review how that server layout exposes the symlinked files and whether the broader boundary is intentional."
+	summary.title = "public/storage exists in a served Laravel site and needs review"
+	summary.why = "Larainspect found a served Laravel site for this app, but the web root is not the expected public/ path. Review how that layout exposes files behind public/storage and whether that is intentional."
 	summary.severity = model.SeverityLow
 
 	return summary
@@ -383,9 +383,9 @@ func buildUnexpectedPublicStorageSymlinkFinding(app model.LaravelApp) (model.Fin
 		Class:       model.FindingClassDirect,
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "public/storage points outside the expected Laravel public storage target",
-		Why:         "A public symlink that resolves outside storage/app/public can expose private files, shared secrets, or unrelated release content directly through the web root.",
-		Remediation: "Keep public/storage pointed only at storage/app/public or an intentional shared equivalent such as shared/storage/app/public in a release layout.",
+		Title:       "public/storage points somewhere other than Laravel's normal public disk",
+		Why:         "If public/storage points outside storage/app/public, it may expose private files, secrets, or unrelated release content over the web.",
+		Remediation: "Point public/storage only at storage/app/public or an intentional shared equivalent such as shared/storage/app/public in a release layout.",
 		Evidence:    pathEvidence(publicStoragePath),
 		Affected: []model.Target{
 			appTarget(app),
@@ -431,9 +431,9 @@ func buildUnexpectedPublicSymlinkFinding(app model.LaravelApp, pathRecord model.
 		Class:       model.FindingClassDirect,
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "A public symlink resolves into a private Laravel path",
-		Why:         "A symlink under public/ that resolves into non-public application or shared paths can expose private files directly through the web root.",
-		Remediation: "Keep public symlinks limited to intentionally public assets only and never point them at private Laravel code, config, storage, or shared secrets.",
+		Title:       "A symlink inside public/ points to a private app path",
+		Why:         "A symlink under public/ can expose private code, config, storage, or shared files directly through the web server.",
+		Remediation: "Limit public symlinks to intentionally public assets only, and never point them at private Laravel code, config, storage, or shared secrets.",
 		Evidence:    pathEvidence(pathRecord),
 		Affected: []model.Target{
 			appTarget(app),

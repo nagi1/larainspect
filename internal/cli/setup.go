@@ -240,7 +240,11 @@ func buildGeneratedConfig(preset configPreset, inspector hostInspector, answers 
 
 	scope := answers.scope
 	if !scope.Valid() {
-		scope = defaultGeneratedScope(inspector)
+		if appPath != "" {
+			scope = model.ScanScopeApp
+		} else {
+			scope = defaultGeneratedScope(inspector)
+		}
 	}
 	config.Scope = scope
 	config.AppPath = appPath
@@ -257,8 +261,18 @@ func buildGeneratedConfig(preset configPreset, inspector hostInspector, answers 
 		config.Profile.Paths.AppScanRoots = []string{"/var/www", "/srv/www", "/home"}
 	case presetAAPanel:
 		config.Profile.Paths.AppScanRoots = []string{"/www/wwwroot"}
-		config.Profile.Commands.NginxBinary = "/www/server/nginx/sbin/nginx"
-		config.Profile.Commands.SupervisorBinary = "/www/server/panel/pyenv/bin/supervisord"
+		config.Profile.Commands.NginxBinary = firstExistingPathOrDefault(inspector, "/www/server/nginx/sbin/nginx",
+			"/www/server/nginx/sbin/nginx",
+			"/usr/sbin/nginx",
+			"/usr/local/nginx/sbin/nginx",
+		)
+		config.Profile.Commands.SupervisorBinary = firstExistingPath(inspector,
+			"/www/server/panel/pyenv/bin/supervisord",
+			"/usr/bin/supervisord",
+			"/usr/local/bin/supervisord",
+			"/usr/sbin/supervisord",
+			"/usr/local/sbin/supervisord",
+		)
 		config.Profile.Commands.PHPFPMBinaries = globMatches(inspector, "/www/server/php/*/sbin/php-fpm")
 	case presetCPanel:
 		config.Profile.Paths.AppScanRoots = []string{"/home"}
@@ -471,6 +485,28 @@ func dedupeSorted(values []string) []string {
 	}
 	sort.Strings(unique)
 	return unique
+}
+
+func firstExistingPath(inspector hostInspector, candidates ...string) string {
+	for _, candidate := range candidates {
+		trimmedCandidate := strings.TrimSpace(candidate)
+		if trimmedCandidate == "" {
+			continue
+		}
+		if pathExists(inspector, trimmedCandidate) {
+			return filepath.Clean(trimmedCandidate)
+		}
+	}
+
+	return ""
+}
+
+func firstExistingPathOrDefault(inspector hostInspector, fallback string, candidates ...string) string {
+	if resolvedPath := firstExistingPath(inspector, candidates...); resolvedPath != "" {
+		return resolvedPath
+	}
+
+	return filepath.Clean(strings.TrimSpace(fallback))
 }
 
 func resolveGeneratedConfigPath(path string) string {

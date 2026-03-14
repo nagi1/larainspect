@@ -101,6 +101,9 @@ func TestProfileHelpersNormalizeProfileNameAndServicePatterns(t *testing.T) {
 		}
 	}
 	for _, pattern := range config.NormalizedNginxConfigPatterns() {
+		if pattern == "/www/server/nginx/conf/*.conf" {
+			foundAAPanelNginxPath = true
+		}
 		if pattern == "/www/server/panel/vhost/nginx/*.conf" {
 			foundAAPanelNginxPath = true
 			break
@@ -112,6 +115,17 @@ func TestProfileHelpersNormalizeProfileNameAndServicePatterns(t *testing.T) {
 	}
 	if !foundAAPanelNginxPath {
 		t.Fatalf("expected aaPanel nginx vhost pattern, got %+v", config.NormalizedNginxConfigPatterns())
+	}
+
+	foundGenericSupervisorPath := false
+	for _, pattern := range model.DefaultAuditConfig().NormalizedSupervisorConfigPatterns() {
+		if pattern == "/etc/supervisor/*.conf" {
+			foundGenericSupervisorPath = true
+			break
+		}
+	}
+	if !foundGenericSupervisorPath {
+		t.Fatalf("expected generic supervisor directory pattern, got %+v", model.DefaultAuditConfig().NormalizedSupervisorConfigPatterns())
 	}
 }
 

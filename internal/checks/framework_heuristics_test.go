@@ -61,8 +61,8 @@ func TestFrameworkHeuristicsCheckReportsRepresentativeSignals(t *testing.T) {
 		"Admin-like routes do not show obvious auth middleware",
 		"Livewire component mutates model state without obvious authorization checks",
 		"Filament panel appears to use a public /admin path without obvious extra auth middleware",
-		"Laravel Telescope package appears present",
-		"Public path contains diagnostic or admin tooling",
+		"Laravel Telescope is installed in this app",
+		"Public web path contains admin or diagnostic tools",
 	} {
 		if !findingTitleExists(result.Findings, title) {
 			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)

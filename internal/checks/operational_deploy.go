@@ -169,9 +169,9 @@ func collectReleaseLayoutFindings(app model.LaravelApp) []model.Finding {
 		Class:       model.FindingClassHeuristic,
 		Severity:    model.SeverityMedium,
 		Confidence:  model.ConfidenceProbable,
-		Title:       "Deployment appears to mutate one live app tree in place",
-		Why:         "In-place deploys make rollback, immutability, and permission-drift control harder than a release-based current-plus-releases model.",
-		Remediation: "Prefer a release-based deployment layout with immutable releases, a current symlink switch, and shared writable paths kept outside release code.",
+		Title:       "Deployment updates the live app in place",
+		Why:         "Updating the live app directory directly makes rollback harder and increases the chance of partial deploys or permission drift.",
+		Remediation: "Prefer a release-based layout with separate release directories, a current symlink switch, and shared writable paths kept outside the release code.",
 		Evidence: []model.Evidence{
 			{Label: "app_root", Detail: app.RootPath},
 			{Label: "deployment_model", Detail: "in_place_or_not_detected_as_release_based"},

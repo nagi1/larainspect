@@ -61,7 +61,8 @@ func (service SnapshotService) discoverNginxSitesFromCommand(ctx context.Context
 		commandName = "nginx"
 	}
 
-	if _, err := service.lookPath(commandName); err != nil {
+	resolvedCommand := service.resolveCommandPath(commandName)
+	if resolvedCommand == "" {
 		if commandName != "nginx" {
 			return nil, []model.Unknown{{
 				ID:      buildUnknownID(appDiscoveryCheckID, "Configured Nginx binary was not found", commandName),
@@ -77,10 +78,10 @@ func (service SnapshotService) discoverNginxSitesFromCommand(ctx context.Context
 		return nil, nil, false
 	}
 
-	request := model.CommandRequest{Name: commandName, Args: []string{"-T"}}
+	request := model.CommandRequest{Name: resolvedCommand, Args: []string{"-T"}}
 	result, err := service.runCommand(ctx, request)
 	if err != nil {
-		return nil, []model.Unknown{newNamedCommandUnknown("Unable to inspect Nginx config", err, commandName, commandSummary(request))}, true
+		return nil, []model.Unknown{newNamedCommandUnknown("Unable to inspect Nginx config", err, resolvedCommand, commandSummary(request))}, true
 	}
 	if result.ExitCode != 0 {
 		reason := strings.TrimSpace(result.Stderr)
@@ -113,7 +114,7 @@ func (service SnapshotService) discoverNginxSitesFromCommand(ctx context.Context
 
 	sites, parseErr := parseNginxSites("nginx -T", combinedOutput)
 	if parseErr != nil {
-		unknown := newParseUnknown(appDiscoveryCheckID, "Unable to parse Nginx config", commandName+" -T", parseErr)
+		unknown := newParseUnknown(appDiscoveryCheckID, "Unable to parse Nginx config", resolvedCommand+" -T", parseErr)
 		unknown.Evidence = []model.Evidence{{Label: "command", Detail: commandSummary(request)}}
 		return nil, []model.Unknown{unknown}, true
 	}

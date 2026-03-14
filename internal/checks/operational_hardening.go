@@ -56,9 +56,9 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 				Class:       model.FindingClassHeuristic,
 				Severity:    model.SeverityMedium,
 				Confidence:  model.ConfidenceProbable,
-				Title:       "SSH password authentication appears enabled",
-				Why:         "Password-based SSH access increases brute-force and credential-reuse risk on hosts that should prefer key-based administration.",
-				Remediation: "Prefer key-based SSH authentication for Laravel VPS administration and disable password authentication where the access model allows it.",
+				Title:       "SSH still allows password sign-in",
+				Why:         "Password-based SSH access is easier to brute-force, reuse, or phish than SSH keys.",
+				Remediation: "Prefer SSH keys for server access and disable password authentication where your access model allows it.",
 				Evidence: []model.Evidence{
 					{Label: "config", Detail: sshConfig.Path},
 					{Label: "password_authentication", Detail: sshConfig.PasswordAuthentication},
@@ -87,15 +87,15 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 		}
 
 		if unit.NoNewPrivileges == "" || !strings.EqualFold(strings.TrimSpace(unit.NoNewPrivileges), "yes") {
-			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_no_new_privileges", "App-adjacent systemd unit does not enable NoNewPrivileges", "Without NoNewPrivileges, service compromise can retain more privilege-escalation opportunities than necessary.", "Set NoNewPrivileges=yes on app-adjacent units where practical."))
+			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_no_new_privileges", "Systemd service is missing NoNewPrivileges protection", "If this service is compromised, it has more ways to gain extra privileges than necessary.", "Set NoNewPrivileges=yes on app-adjacent services where practical."))
 		}
 
 		if unit.ProtectSystem == "" {
-			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_protect_system", "App-adjacent systemd unit does not set ProtectSystem", "Without ProtectSystem or an equivalent filesystem restriction, app-adjacent services have a broader writable host surface than necessary.", "Set ProtectSystem=strict or another justified restrictive mode and make explicit writable exceptions with ReadWritePaths."))
+			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_protect_system", "Systemd service can still write too much of the host filesystem", "Without ProtectSystem or a similar restriction, this service may be able to modify more of the host than it should.", "Set ProtectSystem=strict or another justified restrictive mode, then allow only the specific writable paths the service truly needs."))
 		}
 
 		if len(unit.ReadWritePaths) == 0 && strings.Contains(strings.ToLower(unit.ExecStart), "php-fpm") {
-			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_read_write_paths", "PHP-FPM service does not declare explicit writable paths", "Explicit writable-path declarations help keep the PHP service boundary narrow and make drift easier to detect.", "Constrain PHP-FPM writable paths with ReadWritePaths or equivalent service hardening where practical."))
+			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_read_write_paths", "PHP-FPM service does not limit which paths it may write", "Without explicit writable-path limits, it is harder to tell what PHP-FPM should be allowed to modify on the host.", "Limit PHP-FPM write access with ReadWritePaths or an equivalent hardening feature where practical."))
 		}
 
 		for _, matchedApp := range matchedSystemdApps(unit, snapshot.Apps) {
@@ -116,9 +116,9 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 			Class:       model.FindingClassHeuristic,
 			Severity:    model.SeverityMedium,
 			Confidence:  model.ConfidenceProbable,
-			Title:       "Firewall summaries appear disabled while broad listeners are present",
-			Why:         "Broad service listeners without an active host firewall increase the chance that internal-only services are reachable more widely than intended.",
-			Remediation: "Review the host firewall policy and ensure broad listeners are intentionally exposed rather than relying on default network reachability.",
+			Title:       "Network services are exposed broadly but the host firewall appears off",
+			Why:         "If services listen on broad addresses and the host firewall is off, internal-only ports may be reachable from more networks than intended.",
+			Remediation: "Review the host firewall policy and make sure any broadly listening services are exposed intentionally, not just reachable by default.",
 			Evidence:    firewallEvidence(snapshot.FirewallSummaries, snapshot.Listeners),
 			Affected:    []model.Target{{Type: "name", Name: "host"}},
 		})
@@ -132,9 +132,9 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 				Class:       model.FindingClassDirect,
 				Severity:    model.SeverityMedium,
 				Confidence:  model.ConfidenceConfirmed,
-				Title:       "Laravel log directory is world-readable",
-				Why:         "World-readable logs can expose stack traces, secrets, queue payload details, and operational metadata to unintended local users.",
-				Remediation: "Restrict storage/logs to the deploy and runtime identities that need it and keep logs outside any served path.",
+				Title:       "Laravel logs can be read by any local user",
+				Why:         "If storage/logs is world-readable, local users may be able to read stack traces, secrets, and operational details.",
+				Remediation: "Limit storage/logs to the deploy and runtime users that need it, and keep logs outside any served web path.",
 				Evidence:    pathEvidence(logsPath),
 				Affected: []model.Target{
 					appTarget(app),
@@ -162,25 +162,25 @@ func collectSSHAccountPermissionFindings(accounts []model.SSHAccount) []model.Fi
 			record:          func(account model.SSHAccount) []model.PathRecord { return []model.PathRecord{account.SSHDir} },
 			expectedMaxMode: 0o700,
 			suffix:          "ssh_dir_permissions",
-			title:           "SSH directory permissions are broader than 0700",
-			why:             "An SSH home directory with group or world access makes key material and account trust boundaries easier to tamper with or inspect unexpectedly.",
-			remediation:     "Restrict ~/.ssh to mode 0700 or stricter for every operational account.",
+			title:           "~/.ssh is accessible to group or other users",
+			why:             "If the SSH directory is too open, other local users may be able to inspect or tamper with SSH trust files.",
+			remediation:     "Restrict ~/.ssh to owner-only access, typically mode 0700 or stricter, for every operational account.",
 		},
 		{
 			record:          func(account model.SSHAccount) []model.PathRecord { return []model.PathRecord{account.AuthorizedKeys} },
 			expectedMaxMode: 0o600,
 			suffix:          "authorized_keys_permissions",
-			title:           "authorized_keys permissions are broader than 0600",
-			why:             "A broadly readable or writable authorized_keys file weakens trust over who can add, replace, or inspect SSH access grants for the account.",
-			remediation:     "Restrict authorized_keys to mode 0600 or stricter and keep ownership aligned with the intended account.",
+			title:           "authorized_keys is accessible to group or other users",
+			why:             "If authorized_keys is too open, other local users may be able to read or change who can log in over SSH.",
+			remediation:     "Restrict authorized_keys to owner-only access, typically mode 0600 or stricter, and keep ownership on the intended account.",
 		},
 		{
 			record:          func(account model.SSHAccount) []model.PathRecord { return account.PrivateKeys },
 			expectedMaxMode: 0o600,
 			suffix:          "private_key_permissions",
-			title:           "SSH private key permissions are broader than 0600",
-			why:             "Broadly readable or writable private key files materially increase the chance that operational SSH credentials are copied, replaced, or abused.",
-			remediation:     "Restrict private key files to mode 0600 or stricter and rotate any key that has been broadly exposed.",
+			title:           "SSH private key file is accessible to group or other users",
+			why:             "If a private key file is too open, other local users may be able to copy or replace an operational SSH credential.",
+			remediation:     "Restrict private key files to owner-only access, typically mode 0600 or stricter, and rotate any key that was exposed too broadly.",
 		},
 	}
 

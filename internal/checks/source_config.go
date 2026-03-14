@@ -33,9 +33,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.app.debug_true",
 			model.FindingClassDirect,
 			model.SeverityHigh, model.ConfidenceProbable,
-			"config/app.php hardcodes debug mode on",
-			"Hardcoding Laravel debug mode on keeps verbose error output enabled regardless of environment settings and can expose stack traces, secrets, and internal paths.",
-			"Read the debug flag from environment or runtime config and keep production debug output disabled.",
+			"Debug mode is hardcoded on in config/app.php",
+			"If debug mode is forced on in code, the app may keep showing detailed errors even when production environment settings say otherwise.",
+			"Read the debug setting from the environment and make sure production keeps detailed error pages disabled.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -45,9 +45,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.auth.password_reset_expire_long",
 			model.FindingClassDirect,
 			model.SeverityLow, model.ConfidencePossible,
-			"config/auth.php uses a long password reset expiry",
-			"Long-lived password reset tokens widen the window for reuse when reset links are exposed, forwarded, or left in mailboxes.",
-			"Reduce the password reset expiry to the shortest practical window for the application and review whether stale reset tokens are invalidated aggressively enough.",
+			"Password reset links stay valid for too long",
+			"The longer a reset link stays valid, the more time someone has to reuse it if the message is forwarded, leaked, or left in a mailbox.",
+			"Shorten the password reset expiry to the smallest practical window and make sure old reset links are invalidated promptly.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -57,9 +57,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.session.http_only_false",
 			model.FindingClassDirect,
 			model.SeverityHigh, model.ConfidenceProbable,
-			"config/session.php disables HttpOnly session cookies",
-			"Disabling the HttpOnly flag makes Laravel session cookies readable from JavaScript, which raises the impact of any XSS exposure materially.",
-			"Enable HttpOnly for session cookies and confirm custom cookie code does not reintroduce script-readable session state elsewhere.",
+			"Session cookies are readable by JavaScript",
+			"If HttpOnly is disabled, any XSS bug can read the session cookie directly in the browser.",
+			"Enable HttpOnly on session cookies and make sure custom cookie code does not reintroduce script-readable session state.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -69,9 +69,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.session.same_site_none",
 			model.FindingClassDirect,
 			model.SeverityMedium, model.ConfidenceProbable,
-			"config/session.php permits cross-site session cookies",
-			"Using SameSite none or null allows session cookies to accompany cross-site requests more broadly and weakens default CSRF containment.",
-			"Prefer a SameSite value of lax or strict unless a specific cross-site session flow is required and separately protected.",
+			"Session cookies are allowed on cross-site requests",
+			"Allowing SameSite none or null makes it easier for the browser to send session cookies with cross-site requests.",
+			"Use SameSite=lax or strict unless a specific cross-site flow is required and separately protected.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -81,9 +81,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.cors.wildcard_origins",
 			model.FindingClassDirect,
 			model.SeverityMedium, model.ConfidenceProbable,
-			"config/cors.php allows wildcard origins",
-			"Wildcard CORS origins let arbitrary sites read responses from browser-initiated requests when the rest of the policy permits it, which expands cross-origin data exposure risk.",
-			"Replace wildcard origins with the exact frontend origins that should be allowed to call the application.",
+			"CORS allows any website origin",
+			"If CORS allows every origin, other websites may be able to read app responses from a user's browser when the rest of the policy permits it.",
+			"Replace wildcard origins with the exact frontend domains that should be allowed to call the app.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -98,9 +98,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 				model.FindingClassDirect,
 				model.SeverityHigh,
 				model.ConfidenceProbable,
-				"config/cors.php combines credentials with wildcard origins",
-				"Credentialed cross-origin requests paired with wildcard origins are a brittle and dangerous policy combination that can expose authenticated application responses to untrusted sites.",
-				"Do not allow credentials for wildcard origins. Restrict origins to the exact trusted frontends that need credentialed browser access.",
+				"CORS allows credentials for any website origin",
+				"Allowing credentials with wildcard origins can let untrusted sites read authenticated responses from a user's browser.",
+				"Do not allow credentials for wildcard origins. Limit this policy to the exact trusted frontend domains that need signed-in browser access.",
 				append([]model.SourceMatch{}, corsWildcardMatches...),
 				sourceMatchEvidenceForMatches(app, corsCredentialMatches),
 			))
@@ -111,9 +111,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.mail.hardcoded_password",
 			model.FindingClassDirect,
 			model.SeverityHigh, model.ConfidenceProbable,
-			"config/mail.php hardcodes a mail credential",
-			"Hardcoded mail credentials are easy to leak through source access, backups, or config cache artifacts and are harder to rotate safely than environment-managed secrets.",
-			"Move mail credentials to the deploy-time secret source used for this environment and keep config files free of embedded passwords.",
+			"Mail password is hardcoded in config/mail.php",
+			"A password stored directly in code is easier to leak through source access, backups, or cached config files.",
+			"Move mail credentials into the environment or secret store used during deployment and remove passwords from config files.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -123,9 +123,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.database.hardcoded_password",
 			model.FindingClassDirect,
 			model.SeverityHigh, model.ConfidenceProbable,
-			"config/database.php hardcodes a database credential",
-			"Embedding database credentials in Laravel config makes them available anywhere the source tree or cached config is exposed and complicates secret rotation.",
-			"Keep database credentials in the environment or secret distribution mechanism used by the deployment, not in versioned config.",
+			"Database password is hardcoded in config/database.php",
+			"A database password stored in code is easier to leak anywhere the source tree or cached config becomes visible.",
+			"Keep database credentials in the environment or secret store used by deployment, not in versioned config files.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -135,8 +135,8 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.broadcasting.hardcoded_secret",
 			model.FindingClassDirect,
 			model.SeverityMedium, model.ConfidenceProbable,
-			"config/broadcasting.php hardcodes a service credential",
-			"Hardcoded broadcasting secrets expand the blast radius of repository, backup, and config-cache exposure and are awkward to rotate under incident pressure.",
+			"Broadcasting secret is hardcoded in config/broadcasting.php",
+			"A service secret stored in code is easier to leak through the repository, backups, or cached config files.",
 			"Read broadcasting keys and secrets from deployment-managed secrets instead of embedding them in config.",
 		); found {
 			findings = append(findings, finding)
@@ -147,9 +147,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.config.logging.hardcoded_slack_webhook",
 			model.FindingClassDirect,
 			model.SeverityMedium, model.ConfidenceProbable,
-			"config/logging.php hardcodes a Slack webhook",
-			"Slack webhooks behave like bearer-style credentials. Embedding one in config makes it easier to leak and abuse for message spoofing or alert noise.",
-			"Store Slack webhook URLs in the environment or secret manager used by the deployment and rotate any webhook that has been committed or deployed broadly.",
+			"Slack webhook is hardcoded in config/logging.php",
+			"A Slack webhook URL acts like a secret. If it is stored in code, it is easier to leak and abuse for fake or noisy alerts.",
+			"Store Slack webhook URLs in the environment or secret manager used by deployment, and rotate any webhook that has already been committed or widely deployed.",
 		); found {
 			findings = append(findings, finding)
 		}
@@ -159,9 +159,9 @@ func (SourceConfigCheck) Run(_ context.Context, _ model.ExecutionContext, snapsh
 			"laravel.env.example.real_secret_value",
 			model.FindingClassHeuristic,
 			model.SeverityMedium, model.ConfidencePossible,
-			".env.example contains credential-like values",
-			"Credential-like values in .env.example are easy to commit, copy into real environments, or leak through build artifacts even when they were meant only as placeholders.",
-			"Replace real-looking values in .env.example with unmistakable placeholders and rotate any secret that was copied from a tracked example file.",
+			".env.example contains real-looking secret values",
+			"Values that look real in .env.example are easy to copy into production by mistake or leak through commits and build artifacts.",
+			"Replace them with obvious placeholders and rotate any secret that was copied from a tracked example file.",
 		); found {
 			findings = append(findings, finding)
 		}

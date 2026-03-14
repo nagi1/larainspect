@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,15 +12,137 @@ import (
 
 func (service SnapshotService) anyCommandAvailable(commands []string) bool {
 	for _, commandName := range commands {
-		if strings.TrimSpace(commandName) == "" {
-			continue
-		}
-		if _, err := service.lookPath(commandName); err == nil {
+		if service.resolveCommandPath(commandName) != "" {
 			return true
 		}
 	}
 
 	return false
+}
+
+func (service SnapshotService) resolveCommandPath(commandName string) string {
+	trimmedCommand := strings.TrimSpace(commandName)
+	if trimmedCommand == "" {
+		return ""
+	}
+
+	if service.lookPath != nil {
+		if resolvedPath, err := service.lookPath(trimmedCommand); err == nil {
+			return resolvedPath
+		}
+	}
+
+	for _, candidatePath := range commandFallbackCandidates(trimmedCommand) {
+		if service.pathLooksExecutable(candidatePath) {
+			return candidatePath
+		}
+	}
+
+	return ""
+}
+
+func (service SnapshotService) pathLooksExecutable(path string) bool {
+	if service.statPath == nil {
+		return false
+	}
+
+	info, err := service.statPath(path)
+	if err != nil || info == nil || info.IsDir() {
+		return false
+	}
+
+	mode := info.Mode()
+	if mode&fs.ModePerm == 0 {
+		return true
+	}
+
+	return mode&0o111 != 0
+}
+
+func commandFallbackCandidates(commandName string) []string {
+	trimmedCommand := strings.TrimSpace(commandName)
+	if trimmedCommand == "" {
+		return nil
+	}
+
+	if strings.ContainsRune(trimmedCommand, filepath.Separator) {
+		return []string{filepath.Clean(trimmedCommand)}
+	}
+
+	switch trimmedCommand {
+	case "nginx":
+		return []string{
+			"/usr/sbin/nginx",
+			"/usr/local/sbin/nginx",
+			"/usr/local/nginx/sbin/nginx",
+			"/www/server/nginx/sbin/nginx",
+		}
+	case "supervisord":
+		return []string{
+			"/usr/bin/supervisord",
+			"/usr/local/bin/supervisord",
+			"/usr/sbin/supervisord",
+			"/usr/local/sbin/supervisord",
+			"/www/server/panel/pyenv/bin/supervisord",
+		}
+	default:
+		if phpFPMCandidates := phpFPMFallbackCandidates(trimmedCommand); len(phpFPMCandidates) != 0 {
+			return phpFPMCandidates
+		}
+	}
+
+	return nil
+}
+
+func phpFPMFallbackCandidates(commandName string) []string {
+	versionHints := phpFPMVersionHints(commandName)
+	if len(versionHints) == 0 {
+		return nil
+	}
+
+	candidates := []string{}
+	for _, version := range versionHints {
+		if version == "" {
+			candidates = append(candidates,
+				"/usr/sbin/php-fpm",
+				"/usr/local/sbin/php-fpm",
+			)
+			continue
+		}
+
+		candidates = append(candidates,
+			"/usr/sbin/php-fpm"+version,
+			"/usr/local/sbin/php-fpm"+version,
+			"/usr/sbin/php-fpm"+strings.ReplaceAll(version, ".", ""),
+			"/usr/local/sbin/php-fpm"+strings.ReplaceAll(version, ".", ""),
+			"/www/server/php/"+strings.ReplaceAll(version, ".", "")+"/sbin/php-fpm",
+		)
+	}
+
+	return normalizeCommandHints(candidates)
+}
+
+func phpFPMVersionHints(commandName string) []string {
+	switch commandName {
+	case "php-fpm":
+		return []string{"", "8.5", "8.4", "8.3", "8.2", "8.1", "8.0", "7.4"}
+	case "php-fpm8.5", "php-fpm85":
+		return []string{"8.5"}
+	case "php-fpm8.4", "php-fpm84":
+		return []string{"8.4"}
+	case "php-fpm8.3", "php-fpm83":
+		return []string{"8.3"}
+	case "php-fpm8.2", "php-fpm82":
+		return []string{"8.2"}
+	case "php-fpm8.1", "php-fpm81":
+		return []string{"8.1"}
+	case "php-fpm8.0", "php-fpm80":
+		return []string{"8.0"}
+	case "php-fpm7.4", "php-fpm74":
+		return []string{"7.4"}
+	default:
+		return nil
+	}
 }
 
 func (service SnapshotService) commandHintUnknowns(

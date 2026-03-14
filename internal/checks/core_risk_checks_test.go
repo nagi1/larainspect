@@ -93,8 +93,8 @@ func TestSecretsExposureCheckReportsDebugBackupsAndUploadPHP(t *testing.T) {
 	}
 
 	for _, title := range []string{
-		"APP_ENV indicates a non-production deployment mode",
-		"DB_PASSWORD is empty in .env",
+		"APP_ENV is set to a development value",
+		"Database password is empty in .env",
 	} {
 		if !findingTitleExists(result.Findings, title) {
 			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
@@ -171,7 +171,7 @@ func TestNginxBoundaryCheckReportsExecutablePublicPHPArtifacts(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if !findingTitleExists(result.Findings, "Served public tree contains PHP files that Nginx may execute directly") {
+	if !findingTitleExists(result.Findings, "Public web directory contains PHP files Nginx may execute directly") {
 		t.Fatalf("expected unexpected public php finding, got %+v", result.Findings)
 	}
 }
@@ -201,7 +201,7 @@ func TestNginxBoundaryCheckReportsPublicPHPArtifactsEvenWithoutGenericHandler(t 
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if !findingTitleExists(result.Findings, "Served public tree contains PHP files beyond the Laravel front controller") {
+	if !findingTitleExists(result.Findings, "Public web directory contains extra PHP files beyond index.php") {
 		t.Fatalf("expected public php boundary finding, got %+v", result.Findings)
 	}
 }
@@ -280,10 +280,10 @@ func TestFilesystemPermissionsCheckReportsRuntimeWritableCodeAndRuntimeOwnedEnv(
 	}
 
 	for _, title := range []string{
-		".env is owned by a Laravel runtime identity",
-		"Laravel project root is owned by a runtime identity",
-		"Laravel runtime identities can write code or configuration paths",
-		"Laravel path permissions exceed the hardened baseline",
+		".env is owned by the web or worker user",
+		"App directory is owned by the web or worker user",
+		"Web or worker user can change app code or config",
+		"Laravel file permissions are broader than needed",
 	} {
 		if !findingTitleExists(result.Findings, title) {
 			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
@@ -318,7 +318,7 @@ func TestFilesystemPermissionsCheckReportsWritablePathBaselineDrift(t *testing.T
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "Writable Laravel paths do not match the hardened writable baseline" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "Laravel writable directories do not match the expected safe setup" {
 		t.Fatalf("expected writable baseline finding, got %+v", result.Findings)
 	}
 }
@@ -346,7 +346,7 @@ func TestNginxBoundaryCheckReportsUnexpectedPublicStorageSymlinkTarget(t *testin
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage points outside the expected Laravel public storage target" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage points somewhere other than Laravel's normal public disk" {
 		t.Fatalf("expected unexpected public/storage symlink finding, got %+v", result.Findings)
 	}
 }
@@ -386,7 +386,7 @@ func TestNginxBoundaryCheckReportsPublicStorageExposureControl(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage exposes Laravel public-disk files through the web root" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage makes public-disk files reachable over the web" {
 		t.Fatalf("expected public/storage exposure control finding, got %+v", result.Findings)
 	}
 }
@@ -417,7 +417,7 @@ func TestNginxBoundaryCheckReportsConditionalPublicStorageBoundaryWithoutMatched
 	if len(result.Findings) != 1 {
 		t.Fatalf("expected one finding, got %+v", result.Findings)
 	}
-	if result.Findings[0].Title != "public/storage symlink exists and should be reviewed as a public boundary" {
+	if result.Findings[0].Title != "public/storage exposes files through the web path and should be reviewed" {
 		t.Fatalf("expected conditional public/storage control finding, got %+v", result.Findings)
 	}
 	if result.Findings[0].Severity != model.SeverityInformational {
@@ -452,7 +452,7 @@ func TestNginxBoundaryCheckReportsPrivatePublicSymlink(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 1 || result.Findings[0].Title != "A public symlink resolves into a private Laravel path" {
+	if len(result.Findings) != 1 || result.Findings[0].Title != "A symlink inside public/ points to a private app path" {
 		t.Fatalf("expected private public symlink finding, got %+v", result.Findings)
 	}
 }

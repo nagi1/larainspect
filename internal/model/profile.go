@@ -198,6 +198,7 @@ func defaultNginxConfigPatterns(osFamily string) []string {
 		"/usr/local/etc/nginx/nginx.conf",
 		"/usr/local/etc/nginx/conf.d/*.conf",
 		"/usr/local/etc/nginx/servers/*",
+		"/www/server/nginx/conf/*.conf",
 		"/www/server/nginx/conf/nginx.conf",
 		"/www/server/nginx/conf/vhost/*.conf",
 		"/www/server/nginx/src/conf/nginx.conf",
@@ -242,6 +243,7 @@ func defaultSupervisorConfigPatterns(osFamily string) []string {
 		}
 	default:
 		return []string{
+			"/etc/supervisor/*.conf",
 			"/etc/supervisor/supervisord.conf",
 			"/etc/supervisor/conf.d/*.conf",
 			"/etc/supervisord.conf",

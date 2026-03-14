@@ -53,9 +53,9 @@ func buildAmbiguousRootFinding(app model.LaravelApp) (model.Finding, bool) {
 		Class:       model.FindingClassDirect,
 		Severity:    model.SeverityLow,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Application root resolves through a different path",
-		Why:         "Symlinked or indirect app roots make web, deploy, and runtime boundaries harder to reason about during an audit.",
-		Remediation: "Document the canonical release path, audit the resolved target, and keep service and web roots pointed at one intentional location.",
+		Title:       "App path resolves to a different directory than expected",
+		Why:         "The selected app path is a symlink or indirect path, which makes it easier to audit the wrong directory or misunderstand where the live code really is.",
+		Remediation: "Document the real app path, audit that resolved directory, and make the web server, PHP-FPM, and deploy tooling all point to the same intended location.",
 		Evidence: []model.Evidence{
 			{Label: "requested_root", Detail: app.RootPath},
 			{Label: "resolved_root", Detail: app.ResolvedPath},
@@ -103,9 +103,9 @@ func buildMissingCorePathsFinding(app model.LaravelApp) (model.Finding, bool) {
 		return model.Finding{}, false
 	}
 
-	why := "A partial or structurally inconsistent Laravel root makes later security findings harder to trust and often points to a broken release or the wrong scan target."
+	why := "The selected app path does not look like a complete Laravel app. This often means the release is broken or the scan is pointing at the wrong directory."
 	if len(wrongKindPaths) == 0 {
-		why = "Missing core Laravel paths usually mean the audit target is incomplete, broken, or not the intended deployed application root."
+		why = "Required Laravel files or directories are missing, which usually means the app is incomplete, broken, or not the real deployed root."
 	}
 
 	return model.Finding{
@@ -114,9 +114,9 @@ func buildMissingCorePathsFinding(app model.LaravelApp) (model.Finding, bool) {
 		Class:       model.FindingClassDirect,
 		Severity:    model.SeverityMedium,
 		Confidence:  model.ConfidenceConfirmed,
-		Title:       "Application is missing expected Laravel paths",
+		Title:       "Selected app path is missing required Laravel files or directories",
 		Why:         why,
-		Remediation: "Verify the selected app path points at a complete Laravel release and restore any missing core directories or files before trusting the audit result.",
+		Remediation: "Verify the scan points at a complete Laravel release, then restore any missing required files or directories before relying on the audit result.",
 		Evidence:    evidence,
 		Affected: []model.Target{
 			appTarget(app),

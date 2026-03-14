@@ -215,10 +215,10 @@ func TestOperationalHardeningCheckReportsLaravelWritableBoundaryDrift(t *testing
 	for _, finding := range result.Findings {
 		titles = append(titles, finding.Title)
 	}
-	if !containsString(titles, "App-adjacent Laravel service does not declare explicit writable paths") {
+	if !containsString(titles, "Systemd service does not list which Laravel paths it may write") {
 		t.Fatalf("expected missing writable-path finding, got %+v", titles)
 	}
-	if !containsString(titles, "App-adjacent systemd unit allows overly broad Laravel write paths") {
+	if !containsString(titles, "Systemd service can write more of the Laravel app than it should") {
 		t.Fatalf("expected broad writable-path finding, got %+v", titles)
 	}
 }
