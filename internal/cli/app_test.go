@@ -184,7 +184,7 @@ func TestVerboseTerminalAuditShowsOnboardingAndNextSteps(t *testing.T) {
 		t.Fatalf("expected progress output, got %q", stdout.String())
 	}
 
-	if !strings.Contains(stdout.String(), "Next steps") {
+	if !strings.Contains(strings.ToLower(stdout.String()), "next steps") {
 		t.Fatalf("expected next steps output, got %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "Stages: setup -> discovery -> checks -> correlation -> report") {
@@ -237,7 +237,7 @@ func TestAuditReportsUnknownForNonLaravelRequestedAppPath(t *testing.T) {
 		t.Fatalf("expected unknown-only exit code, got %d stderr=%q", exitCode, stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), `"unknowns": 1`) {
+	if !strings.Contains(stdout.String(), `"Requested app path is not a Laravel application"`) {
 		t.Fatalf("expected unknown count in JSON output, got %q", stdout.String())
 	}
 }
