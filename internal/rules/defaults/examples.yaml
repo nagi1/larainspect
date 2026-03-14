@@ -1,0 +1,23 @@
+rules:
+  - id: laravel.env.example.real_secret_value
+    title: .env.example contains credential-like values
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: secrets
+    enabled: true
+    why: >-
+      Credential-like values in .env.example are easy to commit, copy into real
+      environments, or leak through build artifacts even when they were meant only
+      as placeholders.
+    remediation: >-
+      Replace real-looking values in .env.example with unmistakable placeholders and
+      rotate any secret that was copied from a tracked example file.
+    patterns:
+      - type: regex
+        target: .env.example
+        detail: contains a credential-like example value for a sensitive key
+        exclude_pattern: >-
+          =\s*(?:['"])?(?:null|secret|password|your_password_here|changeme)(?:['"])?\s*(?:#.*)?$
+        pattern: >-
+          (?m)^(?:export\s+)?(?:AWS_SECRET_ACCESS_KEY|DB_PASSWORD|MAIL_PASSWORD|PUSHER_APP_SECRET|REDIS_PASSWORD)\s*=.+$

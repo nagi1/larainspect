@@ -45,6 +45,8 @@ type testCheckAdapter struct {
 
 func (check testCheckAdapter) ID() string { return check.id }
 
+func (check testCheckAdapter) Description() string { return "test adapter" }
+
 func (check testCheckAdapter) Run(context.Context, model.ExecutionContext, model.Snapshot) (model.CheckResult, error) {
 	return model.CheckResult{}, nil
 }

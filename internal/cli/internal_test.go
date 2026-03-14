@@ -4,36 +4,51 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/nagi1/larainspect/internal/debuglog"
 	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/report/terminal"
 )
 
-func TestWriteFlagError(t *testing.T) {
-	t.Parallel()
+func TestCommandErrorErrorAndUnwrap(t *testing.T) {
+
+	rootErr := errors.New("bad flag")
+	err := &commandError{
+		code: int(model.ExitCodeUsageError),
+		err:  rootErr,
+	}
+
+	if err.Error() != "bad flag" {
+		t.Fatalf("unexpected Error() result %q", err.Error())
+	}
+
+	if !errors.Is(err, rootErr) {
+		t.Fatal("expected Unwrap() to expose the root error")
+	}
+}
+
+func TestCommandErrorWrite(t *testing.T) {
 
 	var output bytes.Buffer
-	writeFlagError(&output, errors.New("bad flag"), func(writer io.Writer) {
+	newUsageError(errors.New("bad flag"), func(writer io.Writer) {
 		_, _ = writer.Write([]byte("usage"))
-	})
+	}).write(&output)
 
 	if !strings.Contains(output.String(), "bad flag") || !strings.Contains(output.String(), "usage") {
 		t.Fatalf("unexpected output %q", output.String())
 	}
 }
 
-func TestWriteFlagErrorForHelp(t *testing.T) {
-	t.Parallel()
+func TestCommandErrorWriteWithoutWrappedError(t *testing.T) {
 
 	var output bytes.Buffer
-	writeFlagError(&output, flag.ErrHelp, func(writer io.Writer) {
+	(&commandError{code: int(model.ExitCodeUsageError), usage: func(writer io.Writer) {
 		_, _ = writer.Write([]byte("usage"))
-	})
+	}}).write(&output)
 
 	if output.String() != "usage" {
 		t.Fatalf("unexpected output %q", output.String())
@@ -41,7 +56,6 @@ func TestWriteFlagErrorForHelp(t *testing.T) {
 }
 
 func TestRunAuditCommandWrapper(t *testing.T) {
-	t.Parallel()
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -52,8 +66,70 @@ func TestRunAuditCommandWrapper(t *testing.T) {
 	}
 }
 
+func TestRunAuditCommandWithInputReturnsHelp(t *testing.T) {
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runAuditCommandWithInput(context.Background(), strings.NewReader(""), &stdout, &stderr, []string{"--help"})
+	if exitCode != 0 {
+		t.Fatalf("expected help exit code, got %d stderr=%q", exitCode, stderr.String())
+	}
+
+	if !strings.Contains(stdout.String(), "Run the read-only audit workflow.") {
+		t.Fatalf("expected audit help output, got %q", stdout.String())
+	}
+}
+
+func TestRunAuditCommandWithInputReturnsUsageForFlagError(t *testing.T) {
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runAuditCommandWithInput(context.Background(), strings.NewReader(""), &stdout, &stderr, []string{"--command-timeout", "bad"})
+	if exitCode != int(model.ExitCodeUsageError) {
+		t.Fatalf("expected usage exit code, got %d", exitCode)
+	}
+
+	if !strings.Contains(stderr.String(), "invalid argument") {
+		t.Fatalf("expected flag parse error, got %q", stderr.String())
+	}
+}
+
+func TestNewProgressBus(t *testing.T) {
+
+	var terminal bytes.Buffer
+	bus := newProgressBus(&terminal, model.AuditConfig{
+		Format:    model.OutputFormatTerminal,
+		Verbosity: model.VerbosityNormal,
+	}, nil)
+	if bus == nil {
+		t.Fatal("expected terminal normal mode to create a progress bus")
+	}
+
+	if got := newProgressBus(&terminal, model.AuditConfig{
+		Format:    model.OutputFormatJSON,
+		Verbosity: model.VerbosityVerbose,
+	}, nil); got != nil {
+		t.Fatal("expected json mode to suppress progress bus")
+	}
+
+	if got := newProgressBus(&terminal, model.AuditConfig{
+		Format:    model.OutputFormatTerminal,
+		Verbosity: model.VerbosityQuiet,
+	}, nil); got != nil {
+		t.Fatal("expected quiet mode to suppress progress bus")
+	}
+
+	if got := newProgressBus(&terminal, model.AuditConfig{
+		Format:    model.OutputFormatJSON,
+		Verbosity: model.VerbosityQuiet,
+	}, debuglog.New(io.Discard)); got == nil {
+		t.Fatal("expected debug logging to force creation of a progress bus")
+	}
+}
+
 func TestReporterFor(t *testing.T) {
-	t.Parallel()
 
 	testCases := []struct {
 		format string
@@ -83,8 +159,74 @@ func TestReporterFor(t *testing.T) {
 	}
 }
 
+func TestBuildAuditOutputs(t *testing.T) {
+
+	var stdout bytes.Buffer
+	outputs, closeOutputs, err := buildAuditOutputs(model.AuditConfig{
+		Format:         model.OutputFormatTerminal,
+		ReportJSONPath: filepath.Join(t.TempDir(), "report.json"),
+	}, &stdout, terminal.NewReporter())
+	if err != nil {
+		t.Fatalf("buildAuditOutputs() error = %v", err)
+	}
+	defer closeOutputs()
+
+	if len(outputs) != 2 {
+		t.Fatalf("expected stdout and json file outputs, got %d", len(outputs))
+	}
+
+	if outputs[0].Reporter.Format() != model.OutputFormatTerminal || outputs[1].Reporter.Format() != model.OutputFormatJSON {
+		t.Fatalf("unexpected output formats %+v", outputs)
+	}
+}
+
+func TestBuildAuditOutputsWithoutArtifactPath(t *testing.T) {
+
+	var stdout bytes.Buffer
+	outputs, closeOutputs, err := buildAuditOutputs(model.AuditConfig{
+		Format: model.OutputFormatTerminal,
+	}, &stdout, terminal.NewReporter())
+	if err != nil {
+		t.Fatalf("buildAuditOutputs() error = %v", err)
+	}
+	defer closeOutputs()
+
+	if len(outputs) != 1 {
+		t.Fatalf("expected only stdout output, got %d", len(outputs))
+	}
+}
+
+func TestBuildTUIOutputsIncludesNoopReporter(t *testing.T) {
+
+	outputs, closeOutputs, err := buildTUIOutputs(model.AuditConfig{})
+	if err != nil {
+		t.Fatalf("buildTUIOutputs() error = %v", err)
+	}
+	defer closeOutputs()
+
+	if len(outputs) != 1 {
+		t.Fatalf("expected noop output only, got %d", len(outputs))
+	}
+	if outputs[0].Reporter.Format() != "tui" {
+		t.Fatalf("expected noop TUI reporter, got %q", outputs[0].Reporter.Format())
+	}
+}
+
+func TestBuildAuditOutputsReturnsFileError(t *testing.T) {
+
+	var stdout bytes.Buffer
+	_, closeOutputs, err := buildAuditOutputs(model.AuditConfig{
+		Format:         model.OutputFormatTerminal,
+		ReportJSONPath: filepath.Join(t.TempDir(), "missing", "report.json"),
+	}, &stdout, terminal.NewReporter())
+	defer closeOutputs()
+
+	if err == nil {
+		t.Fatal("expected file creation error")
+	}
+}
+
 func TestWriteUsageError(t *testing.T) {
-	t.Parallel()
 
 	var output bytes.Buffer
 	exitCode := writeUsageError(&output, errors.New("bad input"), true)
@@ -96,116 +238,54 @@ func TestWriteUsageError(t *testing.T) {
 	}
 }
 
-func TestParseAuditConfigCollectsScanRoots(t *testing.T) {
-	t.Parallel()
+func TestWriteUsageErrorWithoutHelp(t *testing.T) {
 
-	config, helpRequested, err := parseAuditConfig([]string{"--scan-root", "/var/www", "--scan-root", "/srv/apps"})
-	if err != nil {
-		t.Fatalf("parseAuditConfig() error = %v", err)
+	var output bytes.Buffer
+	exitCode := writeUsageError(&output, errors.New("bad input"), false)
+	if exitCode != int(model.ExitCodeUsageError) {
+		t.Fatalf("expected usage exit code, got %d", exitCode)
 	}
 
-	if helpRequested {
-		t.Fatal("expected helpRequested to be false")
-	}
-
-	if len(config.ScanRoots) != 2 {
-		t.Fatalf("expected two scan roots, got %+v", config.ScanRoots)
-	}
-
-	if config.ScanRoots[0] != "/var/www" || config.ScanRoots[1] != "/srv/apps" {
-		t.Fatalf("unexpected scan roots %+v", config.ScanRoots)
+	if strings.Contains(output.String(), "larainspect audit") {
+		t.Fatalf("expected help output to be suppressed, got %q", output.String())
 	}
 }
 
-func TestParseAuditConfigSupportsNoColorShortcut(t *testing.T) {
-	t.Parallel()
+func TestCommandErrorNilReceiver(t *testing.T) {
 
-	config, helpRequested, err := parseAuditConfig([]string{"--no-color"})
-	if err != nil {
-		t.Fatalf("parseAuditConfig() error = %v", err)
+	var nilErr *commandError
+	if nilErr.Error() != "" {
+		t.Fatalf("nil commandError.Error() should be empty, got %q", nilErr.Error())
+	}
+	if nilErr.Unwrap() != nil {
+		t.Fatal("nil commandError.Unwrap() should return nil")
 	}
 
-	if helpRequested {
-		t.Fatal("expected helpRequested to be false")
-	}
-
-	if config.ColorMode != model.ColorModeNever {
-		t.Fatalf("expected --no-color to force never, got %q", config.ColorMode)
-	}
-}
-
-func TestParseAuditConfigLoadsExplicitConfigFileAndAppliesFlagOverrides(t *testing.T) {
-	t.Parallel()
-
-	configPath := filepath.Join(t.TempDir(), "larainspect.json")
-	writeConfigFileForTest(t, configPath, `{
-  "version": 1,
-  "output": {
-    "format": "json",
-    "verbosity": "quiet"
-  },
-  "server": {
-    "os": "fedora"
-  },
-  "advanced": {
-    "command_timeout": "7s"
-  }
-}`)
-
-	config, helpRequested, err := parseAuditConfig([]string{
-		"--config", configPath,
-		"--verbosity", "verbose",
-		"--scope", "host",
-	})
-	if err != nil {
-		t.Fatalf("parseAuditConfig() error = %v", err)
-	}
-
-	if helpRequested {
-		t.Fatal("expected helpRequested to be false")
-	}
-
-	if config.Format != model.OutputFormatJSON {
-		t.Fatalf("expected config file format to be loaded, got %q", config.Format)
-	}
-
-	if config.Verbosity != model.VerbosityVerbose || config.Scope != model.ScanScopeHost {
-		t.Fatalf("expected flag overrides to win, got %+v", config)
-	}
-
-	if config.NormalizedOSFamily() != "rhel" {
-		t.Fatalf("expected fedora profile normalization, got %q", config.NormalizedOSFamily())
+	var output bytes.Buffer
+	nilErr.write(&output)
+	if output.Len() != 0 {
+		t.Fatalf("nil commandError.write() should not write anything, got %q", output.String())
 	}
 }
 
-func TestParseAuditConfigAutoLoadsDefaultConfigFile(t *testing.T) {
-	workingDirectory := t.TempDir()
-	writeConfigFileForTest(t, filepath.Join(workingDirectory, "larainspect.json"), `{
-  "version": 1,
-  "laravel": {
-    "scope": "host"
-  }
-}`)
+func TestCommandErrorWithNilInnerError(t *testing.T) {
 
-	originalWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
+	err := &commandError{code: 1, err: nil}
+	if err.Error() != "" {
+		t.Fatalf("nil inner err should give empty Error(), got %q", err.Error())
 	}
-	if err := os.Chdir(workingDirectory); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(originalWorkingDirectory)
-	})
+}
 
-	config, helpRequested, err := parseAuditConfig(nil)
-	if err != nil {
-		t.Fatalf("parseAuditConfig() error = %v", err)
+func TestCommandErrorWriteWithOnlyUsage(t *testing.T) {
+
+	var output bytes.Buffer
+	err := &commandError{
+		code:  1,
+		err:   nil,
+		usage: func(w io.Writer) { _, _ = w.Write([]byte("USAGE")) },
 	}
-	if helpRequested {
-		t.Fatal("expected helpRequested to be false")
-	}
-	if config.Scope != model.ScanScopeHost {
-		t.Fatalf("expected auto-loaded config scope, got %+v", config)
+	err.write(&output)
+	if output.String() != "USAGE" {
+		t.Fatalf("expected only usage output, got %q", output.String())
 	}
 }

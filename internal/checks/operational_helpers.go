@@ -17,6 +17,11 @@ type operationalCommandRecord struct {
 	Command          string
 }
 
+type operationalPrincipals struct {
+	Users  []string
+	Groups []string
+}
+
 func operationalCommandRecords(snapshot model.Snapshot) []operationalCommandRecord {
 	records := make([]operationalCommandRecord, 0, len(snapshot.SystemdUnits)+len(snapshot.SupervisorPrograms)+len(snapshot.CronEntries))
 
@@ -157,6 +162,12 @@ func commandLooksLikeComposer(command string) bool {
 		strings.Contains(normalizedCommand, "/composer ")
 }
 
+func commandLooksLikeDeploymentWorkflow(command string) bool {
+	return commandLooksLikeComposer(command) ||
+		commandLooksLikeArtisanMaintenance(command) ||
+		commandLooksLikeDangerousPermissionReset(command)
+}
+
 func commandLooksLikeComposerInstallWithoutNoDev(command string) bool {
 	normalizedCommand := strings.ToLower(strings.TrimSpace(command))
 	if !strings.Contains(normalizedCommand, "composer install") {
@@ -197,11 +208,25 @@ func commandLooksLikeBackupOrDump(command string) bool {
 
 func commandLooksLikeRestoreWorkflow(command string) bool {
 	normalizedCommand := strings.ToLower(strings.TrimSpace(command))
-	return strings.Contains(normalizedCommand, "restore") ||
-		strings.Contains(normalizedCommand, "gunzip") ||
+	if strings.Contains(normalizedCommand, "restore") {
+		return strings.Contains(normalizedCommand, "restore-app") ||
+			strings.Contains(normalizedCommand, "restore_laravel") ||
+			strings.Contains(normalizedCommand, "restore-laravel") ||
+			strings.Contains(normalizedCommand, "laravel") ||
+			strings.Contains(normalizedCommand, "artisan") ||
+			strings.Contains(normalizedCommand, " --app ") ||
+			strings.Contains(normalizedCommand, "/var/www/") ||
+			strings.Contains(normalizedCommand, "/srv/")
+	}
+
+	return strings.Contains(normalizedCommand, "gunzip") ||
 		strings.Contains(normalizedCommand, "unzip ") ||
 		strings.Contains(normalizedCommand, "mysql <") ||
 		strings.Contains(normalizedCommand, "psql <")
+}
+
+func commandLooksLikeRecoveryWorkflow(command string) bool {
+	return commandLooksLikeRestoreWorkflow(command) || commandLooksLikeBackupOrDump(command)
 }
 
 func commandLooksLikeArtisanMaintenance(command string) bool {
@@ -274,16 +299,53 @@ func firewallAppearsDisabled(summaries []model.FirewallSummary) bool {
 	return true
 }
 
-func sudoRuleTargetsOperationalPrincipal(rule model.SudoRule) bool {
-	normalizedPrincipal := strings.ToLower(strings.TrimSpace(rule.Principal))
-	switch normalizedPrincipal {
-	case "deploy", "www-data", "nginx":
-		return true
-	default:
-		return strings.HasPrefix(normalizedPrincipal, "%deploy") ||
-			strings.HasPrefix(normalizedPrincipal, "%www-data") ||
-			strings.HasPrefix(normalizedPrincipal, "%nginx")
+func collectOperationalPrincipals(snapshot model.Snapshot) operationalPrincipals {
+	principals := operationalPrincipals{
+		Users:  []string{},
+		Groups: []string{},
 	}
+
+	for _, defaultUser := range []string{"deploy", "www-data", "nginx"} {
+		principals.Users = appendNormalizedUnique(principals.Users, defaultUser)
+		principals.Groups = appendNormalizedUnique(principals.Groups, defaultUser)
+	}
+
+	for _, app := range snapshot.Apps {
+		principals.Users = appendNormalizedUnique(principals.Users, app.RootRecord.OwnerName)
+		principals.Groups = appendNormalizedUnique(principals.Groups, app.RootRecord.GroupName)
+
+		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot)
+		for _, user := range runtimeIdentities.Users {
+			principals.Users = appendNormalizedUnique(principals.Users, user)
+		}
+		for _, group := range runtimeIdentities.Groups {
+			principals.Groups = appendNormalizedUnique(principals.Groups, group)
+		}
+	}
+
+	for _, record := range operationalCommandRecords(snapshot) {
+		if !commandLooksLikeDeploymentWorkflow(record.Command) {
+			continue
+		}
+
+		principals.Users = appendNormalizedUnique(principals.Users, record.RuntimeUser)
+	}
+
+	return principals
+}
+
+func sudoRuleTargetsOperationalPrincipal(rule model.SudoRule, principals operationalPrincipals) bool {
+	normalizedPrincipal := strings.TrimSpace(strings.ToLower(rule.Principal))
+	if normalizedPrincipal == "" {
+		return false
+	}
+
+	if strings.HasPrefix(normalizedPrincipal, "%") {
+		group := strings.TrimPrefix(normalizedPrincipal, "%")
+		return slices.Contains(principals.Groups, group)
+	}
+
+	return slices.Contains(principals.Users, normalizedPrincipal)
 }
 
 func pathRecordContainsUnsafeWriteBit(pathRecord model.PathRecord) bool {
@@ -339,4 +401,146 @@ func compactAppTargets(apps []model.LaravelApp) []model.Target {
 	})
 
 	return targets
+}
+
+func authorizedSSHAccountsByUser(accounts []model.SSHAccount) map[string]model.SSHAccount {
+	accountByUser := map[string]model.SSHAccount{}
+
+	for _, account := range accounts {
+		if !sshAccountHasAuthorizedKeys(account) {
+			continue
+		}
+
+		accountByUser[strings.TrimSpace(account.User)] = account
+	}
+
+	return accountByUser
+}
+
+func sshAccountHasAuthorizedKeys(account model.SSHAccount) bool {
+	return account.AuthorizedKeys.Inspected && account.AuthorizedKeys.Exists
+}
+
+func appDeployUsers(app model.LaravelApp, snapshot model.Snapshot) []string {
+	users := []string{}
+	users = appendNormalizedUnique(users, app.RootRecord.OwnerName)
+
+	for _, record := range operationalRecordsForApp(app, snapshot, commandLooksLikeDeploymentWorkflow) {
+		users = appendNormalizedUnique(users, record.RuntimeUser)
+	}
+
+	return users
+}
+
+func matchedSystemdApps(unit model.SystemdUnit, apps []model.LaravelApp) []model.LaravelApp {
+	record := operationalCommandRecord{
+		SourceType:       "systemd",
+		SourcePath:       unit.Path,
+		Name:             unit.Name,
+		RuntimeUser:      strings.TrimSpace(unit.User),
+		WorkingDirectory: unit.WorkingDirectory,
+		Command:          unit.ExecStart,
+	}
+
+	return appsForOperationalCommand(apps, record)
+}
+
+func systemdUnitNeedsLaravelWritablePaths(unit model.SystemdUnit) bool {
+	return strings.Contains(strings.ToLower(unit.ExecStart), "php-fpm") ||
+		commandLooksLikeQueueWorker(unit.ExecStart) ||
+		commandLooksLikeHorizon(unit.ExecStart) ||
+		commandLooksLikeScheduler(unit.ExecStart)
+}
+
+func laravelWritablePathPrefixes(app model.LaravelApp) []string {
+	prefixes := []string{
+		filepath.Join(app.RootPath, "storage"),
+		filepath.Join(app.RootPath, "bootstrap", "cache"),
+	}
+
+	if resolvedPath := strings.TrimSpace(app.ResolvedPath); resolvedPath != "" {
+		prefixes = append(prefixes,
+			filepath.Join(resolvedPath, "storage"),
+			filepath.Join(resolvedPath, "bootstrap", "cache"),
+		)
+	}
+
+	if sharedPath := strings.TrimSpace(app.Deployment.SharedPath); sharedPath != "" {
+		prefixes = append(prefixes,
+			filepath.Join(sharedPath, "storage"),
+			filepath.Join(sharedPath, "bootstrap", "cache"),
+		)
+	}
+
+	normalized := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		cleanPrefix := filepath.Clean(strings.TrimSpace(prefix))
+		if cleanPrefix == "." || cleanPrefix == "" || slices.Contains(normalized, cleanPrefix) {
+			continue
+		}
+		normalized = append(normalized, cleanPrefix)
+	}
+
+	return normalized
+}
+
+func systemdUnitBroadWritablePaths(unit model.SystemdUnit, app model.LaravelApp) []string {
+	allowedPrefixes := laravelWritablePathPrefixes(app)
+	broadPaths := []string{}
+
+	for _, rawPath := range unit.ReadWritePaths {
+		cleanPath := filepath.Clean(strings.TrimSpace(rawPath))
+		if cleanPath == "." || cleanPath == "" {
+			continue
+		}
+
+		allowed := false
+		for _, allowedPrefix := range allowedPrefixes {
+			if cleanPath == allowedPrefix || strings.HasPrefix(cleanPath, allowedPrefix+string(filepath.Separator)) {
+				allowed = true
+				break
+			}
+		}
+		if allowed {
+			continue
+		}
+
+		for _, root := range appCanonicalRoots(app) {
+			cleanRoot := filepath.Clean(strings.TrimSpace(root))
+			if cleanRoot == "." || cleanRoot == "" {
+				continue
+			}
+			if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
+				broadPaths = appendNormalizedUnique(broadPaths, cleanPath)
+				break
+			}
+		}
+	}
+
+	return broadPaths
+}
+
+func selectSudoEvidenceCommands(commands []string) []string {
+	selected := make([]string, 0, min(3, len(commands)))
+	for _, command := range commands {
+		normalizedCommand := strings.TrimSpace(command)
+		if normalizedCommand == "" {
+			continue
+		}
+
+		selected = append(selected, normalizedCommand)
+		if len(selected) == 3 {
+			break
+		}
+	}
+
+	return selected
+}
+
+func min(left int, right int) int {
+	if left < right {
+		return left
+	}
+
+	return right
 }

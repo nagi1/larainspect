@@ -40,29 +40,8 @@ func TestRenderHandlesEmptyHostAndSections(t *testing.T) {
 	if !strings.Contains(output.String(), "Host: unknown") {
 		t.Fatalf("expected fallback host, got %q", output.String())
 	}
-}
-
-func TestDescribeTargetAndDefaultString(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		target model.Target
-		want   string
-	}{
-		{target: model.Target{Path: "/tmp/demo"}, want: "/tmp/demo"},
-		{target: model.Target{Name: "service", Value: "nginx"}, want: "service=nginx"},
-		{target: model.Target{Name: "nginx"}, want: "nginx"},
-		{target: model.Target{Value: "demo"}, want: "demo"},
-	}
-
-	for _, testCase := range testCases {
-		if got := describeTarget(testCase.target); got != testCase.want {
-			t.Fatalf("describeTarget(%+v) = %q, want %q", testCase.target, got, testCase.want)
-		}
-	}
-
-	if got := defaultString("", "fallback"); got != "fallback" {
-		t.Fatalf("defaultString() = %q, want fallback", got)
+	if !strings.Contains(output.String(), "Result: clean (exit code 0)") {
+		t.Fatalf("expected clean result summary, got %q", output.String())
 	}
 }
 
@@ -100,5 +79,64 @@ func TestRenderUnknownSectionWithEvidence(t *testing.T) {
 
 	if !strings.Contains(output.String(), "Evidence:") {
 		t.Fatalf("expected unknown evidence section, got %q", output.String())
+	}
+}
+
+func TestRenderPriorityQueueIncludesCompromiseAndUnknowns(t *testing.T) {
+	t.Parallel()
+
+	report, err := model.BuildReport(
+		model.Host{},
+		model.Report{}.GeneratedAt,
+		0,
+		[]model.Finding{
+			{
+				ID:          "critical.direct",
+				CheckID:     "critical.direct",
+				Class:       model.FindingClassDirect,
+				Severity:    model.SeverityCritical,
+				Confidence:  model.ConfidenceConfirmed,
+				Title:       "Critical direct finding",
+				Why:         "why",
+				Remediation: "fix",
+				Evidence:    []model.Evidence{{Label: "demo", Detail: "value"}},
+			},
+			{
+				ID:          "high.compromise",
+				CheckID:     "high.compromise",
+				Class:       model.FindingClassCompromiseIndicator,
+				Severity:    model.SeverityHigh,
+				Confidence:  model.ConfidenceProbable,
+				Title:       "High compromise indicator",
+				Why:         "why",
+				Remediation: "fix",
+				Evidence:    []model.Evidence{{Label: "demo", Detail: "value"}},
+			},
+		},
+		[]model.Unknown{{
+			ID:      "unknown.demo",
+			CheckID: "unknown.demo",
+			Title:   "Unknown evidence",
+			Reason:  "reason",
+			Error:   model.ErrorKindPermissionDenied,
+		}},
+	)
+	if err != nil {
+		t.Fatalf("BuildReport() error = %v", err)
+	}
+
+	var output bytes.Buffer
+	if err := NewReporter().Render(&output, report); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"[CRITICAL][DIRECT] Critical direct finding",
+		"[HIGH][COMPROMISE] High compromise indicator",
+		"[UNKNOWN][PERMISSION_DENIED] Unknown evidence",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("expected priority queue entry %q, got %q", want, output.String())
+		}
 	}
 }

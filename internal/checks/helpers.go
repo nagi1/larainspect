@@ -36,6 +36,14 @@ func pathEvidence(pathRecord model.PathRecord) []model.Evidence {
 		evidence = append(evidence, model.Evidence{Label: "mode", Detail: pathRecord.ModeOctal()})
 	}
 
+	if strings.TrimSpace(pathRecord.OwnerName) != "" {
+		evidence = append(evidence, model.Evidence{Label: "owner", Detail: pathRecord.OwnerName})
+	}
+
+	if strings.TrimSpace(pathRecord.GroupName) != "" {
+		evidence = append(evidence, model.Evidence{Label: "group", Detail: pathRecord.GroupName})
+	}
+
 	if pathRecord.ResolvedPath != "" && pathRecord.ResolvedPath != pathRecord.AbsolutePath {
 		evidence = append(evidence, model.Evidence{Label: "resolved", Detail: pathRecord.ResolvedPath})
 	}
@@ -82,6 +90,66 @@ func appCanonicalRoots(app model.LaravelApp) []string {
 	}
 
 	return roots
+}
+
+func appExpectedPublicStorageTargets(app model.LaravelApp) []string {
+	targets := []string{}
+	for _, appRoot := range appCanonicalRoots(app) {
+		targets = append(targets, filepath.Join(appRoot, "storage", "app", "public"))
+	}
+	if app.Deployment.UsesReleaseLayout && strings.TrimSpace(app.Deployment.SharedPath) != "" {
+		targets = append(targets, filepath.Join(app.Deployment.SharedPath, "storage", "app", "public"))
+	}
+
+	return targets
+}
+
+func appPublicStoragePath(app model.LaravelApp) (model.PathRecord, bool) {
+	publicStoragePath, found := app.PathRecord("public/storage")
+	if !found || !publicStoragePath.Inspected || !publicStoragePath.Exists || !publicStoragePath.IsSymlink() {
+		return model.PathRecord{}, false
+	}
+
+	return publicStoragePath, true
+}
+
+func appExpectedPublicStorageSymlink(app model.LaravelApp) (model.PathRecord, bool) {
+	publicStoragePath, found := appPublicStoragePath(app)
+	if !found || strings.TrimSpace(publicStoragePath.ResolvedPath) == "" {
+		return model.PathRecord{}, false
+	}
+	if !publicStorageSymlinkLooksExpected(app, publicStoragePath) {
+		return model.PathRecord{}, false
+	}
+
+	return publicStoragePath, true
+}
+
+func publicStorageSymlinkLooksExpected(app model.LaravelApp, publicStoragePath model.PathRecord) bool {
+	if strings.TrimSpace(publicStoragePath.ResolvedPath) == "" {
+		return false
+	}
+
+	return pathIsWithinAnyRoot(publicStoragePath.ResolvedPath, appExpectedPublicStorageTargets(app))
+}
+
+func pathIsWithinAnyRoot(path string, roots []string) bool {
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanPath == "." || cleanPath == "" {
+		return false
+	}
+
+	for _, root := range roots {
+		cleanRoot := filepath.Clean(strings.TrimSpace(root))
+		if cleanRoot == "." || cleanRoot == "" {
+			continue
+		}
+		if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func appOwnsServedRoot(app model.LaravelApp, servedRoot string) bool {

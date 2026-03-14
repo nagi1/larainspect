@@ -5,8 +5,11 @@ import (
 	"io"
 
 	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/report"
 	"github.com/nagi1/larainspect/internal/report/schema"
 )
+
+var _ report.Reporter = Reporter{}
 
 type Reporter struct{}
 

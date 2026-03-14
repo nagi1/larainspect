@@ -9,6 +9,8 @@ import (
 
 const operationalNetworkCheckID = "operations.network"
 
+var _ Check = OperationalNetworkCheck{}
+
 type OperationalNetworkCheck struct{}
 
 func init() {
@@ -17,6 +19,10 @@ func init() {
 
 func (OperationalNetworkCheck) ID() string {
 	return operationalNetworkCheckID
+}
+
+func (OperationalNetworkCheck) Description() string {
+	return "Inspect exposed listeners and network surfaces around Laravel services."
 }
 
 func (OperationalNetworkCheck) Run(_ context.Context, execution model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {

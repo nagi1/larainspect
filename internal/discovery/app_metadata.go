@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/nagi1/larainspect/internal/model"
@@ -21,20 +23,63 @@ func expectedLaravelPathList() []string {
 	return relativePaths
 }
 
-func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string, resolvedPath string) ([]model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.SourceMatch, model.DeploymentInfo, []model.Unknown) {
-	keyPaths, pathUnknowns := service.collectKeyPathRecords(rootPath)
-	environment, environmentUnknowns := service.collectEnvironmentInfo(rootPath)
-	artifacts, artifactUnknowns := service.collectArtifactRecords(ctx, rootPath)
-	sourceMatches, sourceUnknowns := service.collectFrameworkSourceMatches(ctx, rootPath)
-	deploymentInfo, deploymentUnknowns := service.collectDeploymentInfo(rootPath, resolvedPath)
+func (service SnapshotService) collectApplicationMetadata(ctx context.Context, rootPath string, resolvedPath string) (model.PathRecord, []model.PathRecord, model.EnvironmentInfo, []model.ArtifactRecord, []model.SourceMatch, model.DeploymentInfo, []model.Unknown) {
+	var (
+		rootRecord     model.PathRecord
+		rootUnknown    *model.Unknown
+		keyPaths       []model.PathRecord
+		pathUnknowns   []model.Unknown
+		environment    model.EnvironmentInfo
+		envUnknowns    []model.Unknown
+		artifacts      []model.ArtifactRecord
+		artUnknowns    []model.Unknown
+		sourceMatches  []model.SourceMatch
+		srcUnknowns    []model.Unknown
+		deploymentInfo model.DeploymentInfo
+		depUnknowns    []model.Unknown
+	)
 
-	unknowns := append([]model.Unknown{}, pathUnknowns...)
-	unknowns = append(unknowns, environmentUnknowns...)
-	unknowns = append(unknowns, artifactUnknowns...)
-	unknowns = append(unknowns, sourceUnknowns...)
-	unknowns = append(unknowns, deploymentUnknowns...)
+	var wg sync.WaitGroup
+	wg.Add(6)
 
-	return keyPaths, environment, artifacts, sourceMatches, deploymentInfo, unknowns
+	go func() {
+		defer wg.Done()
+		rootRecord, rootUnknown = service.inspectPathRecord(rootPath, ".")
+	}()
+	go func() {
+		defer wg.Done()
+		keyPaths, pathUnknowns = service.collectKeyPathRecords(rootPath)
+	}()
+	go func() {
+		defer wg.Done()
+		environment, envUnknowns = service.collectEnvironmentInfo(rootPath)
+	}()
+	go func() {
+		defer wg.Done()
+		artifacts, artUnknowns = service.collectArtifactRecords(ctx, rootPath)
+	}()
+	go func() {
+		defer wg.Done()
+		sourceMatches, srcUnknowns = service.collectFrameworkSourceMatches(ctx, rootPath)
+	}()
+	go func() {
+		defer wg.Done()
+		deploymentInfo, depUnknowns = service.collectDeploymentInfo(rootPath, resolvedPath)
+	}()
+
+	wg.Wait()
+
+	unknowns := make([]model.Unknown, 0, len(pathUnknowns)+len(envUnknowns)+len(artUnknowns)+len(srcUnknowns)+len(depUnknowns)+1)
+	if rootUnknown != nil {
+		unknowns = append(unknowns, *rootUnknown)
+	}
+	unknowns = append(unknowns, pathUnknowns...)
+	unknowns = append(unknowns, envUnknowns...)
+	unknowns = append(unknowns, artUnknowns...)
+	unknowns = append(unknowns, srcUnknowns...)
+	unknowns = append(unknowns, depUnknowns...)
+
+	return rootRecord, keyPaths, environment, artifacts, sourceMatches, deploymentInfo, unknowns
 }
 
 func (service SnapshotService) collectKeyPathRecords(rootPath string) ([]model.PathRecord, []model.Unknown) {
@@ -91,9 +136,15 @@ func parseEnvironmentInfo(envBytes []byte) model.EnvironmentInfo {
 		case "APP_DEBUG":
 			environment.AppDebugDefined = true
 			environment.AppDebugValue = normalizedValue
+		case "APP_ENV":
+			environment.AppEnvDefined = true
+			environment.AppEnvValue = normalizedValue
 		case "APP_KEY":
 			environment.AppKeyDefined = normalizedValue != ""
 			environment.AppKeyValue = normalizedValue
+		case "DB_PASSWORD":
+			environment.DBPasswordDefined = true
+			environment.DBPasswordEmpty = normalizedValue == ""
 		case "SESSION_SECURE_COOKIE":
 			environment.SessionSecureCookieDefined = true
 			environment.SessionSecureCookieValue = normalizedValue
@@ -220,15 +271,17 @@ func classifyArtifactPath(relativePath string, directoryEntry fs.DirEntry) (mode
 		return model.ArtifactKindEnvironmentBackup, withinPublicPath, uploadLikePath, true
 	case baseName == ".git" || baseName == ".svn":
 		return model.ArtifactKindVersionControlPath, withinPublicPath, uploadLikePath, true
+	case withinPublicPath && directoryEntry.Type()&fs.ModeSymlink != 0:
+		return model.ArtifactKindPublicSymlink, true, uploadLikePath, true
 	case withinPublicPath && matchesPublicAdminToolPath(cleanRelativePath, directoryEntry):
 		return model.ArtifactKindPublicAdminTool, true, uploadLikePath, true
 	case !directoryEntry.IsDir() && withinPublicPath && hasSensitivePublicFileExtension(baseName):
 		return model.ArtifactKindPublicSensitiveFile, true, uploadLikePath, true
-	case !directoryEntry.IsDir() && withinPublicPath && uploadLikePath && strings.EqualFold(filepath.Ext(baseName), ".php"):
-		return model.ArtifactKindPublicPHPFile, true, true, true
+	case !directoryEntry.IsDir() && withinPublicPath && hasExecutablePHPExtension(baseName) && cleanRelativePath != "public/index.php":
+		return model.ArtifactKindPublicPHPFile, true, uploadLikePath, true
 	case withinWritablePath && directoryEntry.Type()&fs.ModeSymlink != 0:
 		return model.ArtifactKindWritableSymlink, false, false, true
-	case withinWritablePath && !directoryEntry.IsDir() && strings.EqualFold(filepath.Ext(baseName), ".php") && !isExpectedWritablePHPPath(cleanRelativePath):
+	case withinWritablePath && !directoryEntry.IsDir() && hasExecutablePHPExtension(baseName) && !isExpectedWritablePHPPath(cleanRelativePath):
 		return model.ArtifactKindWritablePHPFile, false, false, true
 	case withinWritablePath && !directoryEntry.IsDir() && hasArchiveFileExtension(baseName):
 		return model.ArtifactKindWritableArchive, false, false, true
@@ -261,14 +314,31 @@ func isEnvironmentBackup(baseName string) bool {
 	return strings.HasPrefix(baseName, ".env")
 }
 
-func hasSensitivePublicFileExtension(baseName string) bool {
-	for _, extension := range []string{".sql", ".zip", ".tar", ".gz", ".tgz", ".log"} {
-		if strings.EqualFold(filepath.Ext(baseName), extension) {
+// hasFileExtension checks if a filename ends with one of the given extensions (case-insensitive).
+func hasFileExtension(baseName string, extensions []string) bool {
+	ext := filepath.Ext(baseName)
+	for _, candidate := range extensions {
+		if strings.EqualFold(ext, candidate) {
 			return true
 		}
 	}
-
 	return false
+}
+
+var sensitivePublicExtensions = []string{".sql", ".zip", ".tar", ".gz", ".tgz", ".log"}
+var archiveExtensions = []string{".sql", ".zip", ".tar", ".gz", ".tgz", ".bak"}
+var executablePHPExtensions = []string{".php", ".phtml", ".pht", ".phar", ".php3", ".php4", ".php5", ".php7", ".php8"}
+
+func hasSensitivePublicFileExtension(baseName string) bool {
+	return hasFileExtension(baseName, sensitivePublicExtensions)
+}
+
+func hasExecutablePHPExtension(baseName string) bool {
+	return hasFileExtension(baseName, executablePHPExtensions)
+}
+
+func hasArchiveFileExtension(baseName string) bool {
+	return hasFileExtension(baseName, archiveExtensions)
 }
 
 func isWithinWritableAppPath(relativePath string) bool {
@@ -276,16 +346,6 @@ func isWithinWritableAppPath(relativePath string) bool {
 		strings.HasPrefix(relativePath, "storage/") ||
 		relativePath == "bootstrap/cache" ||
 		strings.HasPrefix(relativePath, "bootstrap/cache/")
-}
-
-func hasArchiveFileExtension(baseName string) bool {
-	for _, extension := range []string{".sql", ".zip", ".tar", ".gz", ".tgz", ".bak"} {
-		if strings.EqualFold(filepath.Ext(baseName), extension) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (service SnapshotService) collectDeploymentInfo(rootPath string, resolvedPath string) (model.DeploymentInfo, []model.Unknown) {
@@ -374,6 +434,10 @@ func matchesPublicAdminToolPath(relativePath string, directoryEntry fs.DirEntry)
 
 func (service SnapshotService) inspectPathRecord(rootPath string, relativePath string) (model.PathRecord, *model.Unknown) {
 	absolutePath := filepath.Join(rootPath, relativePath)
+	return service.inspectAbsolutePathRecord(relativePath, absolutePath)
+}
+
+func (service SnapshotService) inspectAbsolutePathRecord(relativePath string, absolutePath string) (model.PathRecord, *model.Unknown) {
 	record := model.PathRecord{
 		RelativePath: relativePath,
 		AbsolutePath: absolutePath,
@@ -420,6 +484,8 @@ func (service SnapshotService) inspectPathRecord(rootPath string, relativePath s
 
 	record.Permissions = uint32(targetInfo.Mode().Perm())
 	record.UID, record.GID = ownershipFromFileInfo(targetInfo)
+	record.OwnerName = service.lookupPrincipalName(record.UID, service.lookupUserName)
+	record.GroupName = service.lookupPrincipalName(record.GID, service.lookupGroupName)
 	if record.TargetKind == "" && record.PathKind != model.PathKindSymlink {
 		record.TargetKind = record.PathKind
 	}
@@ -449,4 +515,17 @@ func ownershipFromFileInfo(fileInfo fs.FileInfo) (uint32, uint32) {
 	}
 
 	return stat.Uid, stat.Gid
+}
+
+func (service SnapshotService) lookupPrincipalName(identifier uint32, resolver func(string) (string, error)) string {
+	if resolver == nil {
+		return ""
+	}
+
+	name, err := resolver(strconv.FormatUint(uint64(identifier), 10))
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(name)
 }

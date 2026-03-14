@@ -9,6 +9,8 @@ import (
 
 const workerSchedulerCheckID = "operations.workers"
 
+var _ Check = WorkerSchedulerCheck{}
+
 type WorkerSchedulerCheck struct{}
 
 func init() {
@@ -17,6 +19,10 @@ func init() {
 
 func (WorkerSchedulerCheck) ID() string {
 	return workerSchedulerCheckID
+}
+
+func (WorkerSchedulerCheck) Description() string {
+	return "Inspect queue worker and scheduler process safety."
 }
 
 func (WorkerSchedulerCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {

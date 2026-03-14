@@ -8,6 +8,8 @@ import (
 
 const operationalForensicsCheckID = "operations.forensics"
 
+var _ Check = OperationalForensicsCheck{}
+
 type OperationalForensicsCheck struct{}
 
 func init() {
@@ -16,6 +18,10 @@ func init() {
 
 func (OperationalForensicsCheck) ID() string {
 	return operationalForensicsCheckID
+}
+
+func (OperationalForensicsCheck) Description() string {
+	return "Inspect compromise indicators and suspicious writable artifacts."
 }
 
 func (OperationalForensicsCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {

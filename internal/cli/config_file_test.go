@@ -10,7 +10,6 @@ import (
 )
 
 func TestLoadAuditConfigFileParsesSimpleSections(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{
@@ -37,7 +36,9 @@ func TestLoadAuditConfigFileParsesSimpleSections(t *testing.T) {
   },
   "output": {
     "format": "json",
-    "verbosity": "quiet"
+    "verbosity": "quiet",
+    "report_json_path": "/tmp/larainspect-report.json",
+    "report_markdown_path": "/tmp/larainspect-report.md"
   },
   "advanced": {
     "command_timeout": "5s"
@@ -52,30 +53,30 @@ func TestLoadAuditConfigFileParsesSimpleSections(t *testing.T) {
 	if config.ConfigPath != configPath {
 		t.Fatalf("expected ConfigPath %q, got %q", configPath, config.ConfigPath)
 	}
-
 	if config.Format != model.OutputFormatJSON || config.Scope != model.ScanScopeHost {
 		t.Fatalf("unexpected parsed audit config: %+v", config)
 	}
-
+	if config.ReportJSONPath != "/tmp/larainspect-report.json" {
+		t.Fatalf("expected report json path, got %q", config.ReportJSONPath)
+	}
+	if config.ReportMarkdownPath != "/tmp/larainspect-report.md" {
+		t.Fatalf("expected report markdown path, got %q", config.ReportMarkdownPath)
+	}
 	if config.Profile.Name != "fedora-prod" || config.NormalizedOSFamily() != "rhel" {
 		t.Fatalf("unexpected profile config: %+v", config.Profile)
 	}
-
 	if config.AppPath != "/srv/laravel/shop/current" {
 		t.Fatalf("expected app path to be loaded, got %q", config.AppPath)
 	}
-
 	if config.Profile.Paths.UseDefaultPatterns || len(config.NormalizedNginxConfigPatterns()) != 1 {
 		t.Fatalf("expected custom-only patterns, got %+v", config.Profile.Paths)
 	}
-
 	if config.ShouldDiscoverPHPFPM() {
 		t.Fatalf("expected discover_php_fpm=false to be respected")
 	}
 }
 
 func TestLoadAuditConfigFileSupportsLegacySections(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{
@@ -103,14 +104,115 @@ func TestLoadAuditConfigFileSupportsLegacySections(t *testing.T) {
 	if config.Format != model.OutputFormatJSON || config.NormalizedOSFamily() != "rhel" {
 		t.Fatalf("unexpected legacy config result: %+v", config)
 	}
-
 	if config.ShouldDiscoverPHPFPM() {
 		t.Fatal("expected legacy discover_php_fpm=false to be respected")
 	}
 }
 
+func TestLoadAuditConfigFileParsesRulesSection(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, `{
+  "version": 1,
+  "rules": {
+    "enable": ["laravel.inject.eval"],
+    "disable": ["laravel.debug.dd_call"],
+    "custom_dirs": ["/tmp/team-rules"],
+    "override": {
+      "laravel.inject.eval": {
+        "severity": "low",
+        "confidence": "probable",
+        "enabled": true
+      }
+    }
+  }
+}`)
+
+	config, err := loadAuditConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("loadAuditConfigFile() error = %v", err)
+	}
+
+	if len(config.Rules.Enable) != 1 || config.Rules.Enable[0] != "laravel.inject.eval" {
+		t.Fatalf("unexpected rules.enable %+v", config.Rules.Enable)
+	}
+	if len(config.Rules.Disable) != 1 || config.Rules.Disable[0] != "laravel.debug.dd_call" {
+		t.Fatalf("unexpected rules.disable %+v", config.Rules.Disable)
+	}
+	if len(config.Rules.CustomDirs) != 1 || config.Rules.CustomDirs[0] != "/tmp/team-rules" {
+		t.Fatalf("unexpected rules.custom_dirs %+v", config.Rules.CustomDirs)
+	}
+
+	override, found := config.Rules.Override["laravel.inject.eval"]
+	if !found {
+		t.Fatal("expected rules.override entry")
+	}
+	if override.Severity != model.SeverityLow || override.Confidence != model.ConfidenceProbable {
+		t.Fatalf("unexpected rules.override %+v", override)
+	}
+	if override.Enabled == nil || !*override.Enabled {
+		t.Fatalf("expected rules.override.enabled=true, got %+v", override.Enabled)
+	}
+}
+
+func TestLoadAuditConfigFileRejectsInvalidRulesOverride(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, `{
+  "version": 1,
+  "rules": {
+    "override": {
+      "laravel.inject.eval": {
+        "severity": "severe"
+      }
+    }
+  }
+}`)
+
+	if _, err := loadAuditConfigFile(configPath); err == nil {
+		t.Fatal("expected invalid rules.override.severity error")
+	}
+}
+
+func TestLoadAuditConfigFileRejectsInvalidRulesOverrideConfidence(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, `{
+  "version": 1,
+  "rules": {
+    "override": {
+      "laravel.inject.eval": {
+        "confidence": "certain"
+      }
+    }
+  }
+}`)
+
+	if _, err := loadAuditConfigFile(configPath); err == nil {
+		t.Fatal("expected invalid rules.override.confidence error")
+	}
+}
+
+func TestApplyRulesSectionAllowsEmptyOverrides(t *testing.T) {
+
+	config := model.DefaultAuditConfig()
+	if err := applyRulesSection(&config, fileRulesConfig{
+		Enable:     []string{"one"},
+		Disable:    []string{"two"},
+		CustomDirs: []string{"/tmp/rules"},
+	}); err != nil {
+		t.Fatalf("applyRulesSection() error = %v", err)
+	}
+
+	if config.Rules.Override != nil {
+		t.Fatalf("expected nil override map, got %+v", config.Rules.Override)
+	}
+	if len(config.Rules.Enable) != 1 || len(config.Rules.Disable) != 1 || len(config.Rules.CustomDirs) != 1 {
+		t.Fatalf("unexpected rules config %+v", config.Rules)
+	}
+}
+
 func TestResolveAuditConfigFilePathSupportsExplicitAndMissingFiles(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{}`)
@@ -122,14 +224,34 @@ func TestResolveAuditConfigFilePathSupportsExplicitAndMissingFiles(t *testing.T)
 	if resolvedPath != configPath {
 		t.Fatalf("expected resolved path %q, got %q", configPath, resolvedPath)
 	}
-
 	if _, err := resolveAuditConfigFilePath(filepath.Join(t.TempDir(), "missing.json")); err == nil {
 		t.Fatal("expected explicit missing config error")
 	}
 }
 
+func TestResolveAuditConfigFilePathReturnsEmptyWithoutConfig(t *testing.T) {
+	workingDirectory := t.TempDir()
+	originalWorkingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(workingDirectory); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWorkingDirectory)
+	})
+
+	resolvedPath, err := resolveAuditConfigFilePath("")
+	if err != nil {
+		t.Fatalf("resolveAuditConfigFilePath() error = %v", err)
+	}
+	if resolvedPath != "" {
+		t.Fatalf("expected empty path, got %q", resolvedPath)
+	}
+}
+
 func TestLoadAuditConfigFileRejectsUnknownKeys(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{
@@ -145,8 +267,29 @@ func TestLoadAuditConfigFileRejectsUnknownKeys(t *testing.T) {
 	}
 }
 
+func TestLoadAuditConfigFileRejectsUnsupportedVersion(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, `{
+  "version": 2
+}`)
+
+	if _, err := loadAuditConfigFile(configPath); err == nil {
+		t.Fatal("expected unsupported version error")
+	}
+}
+
+func TestLoadAuditConfigFileRejectsMultipleJSONValues(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.json")
+	writeConfigFileForTest(t, configPath, "{}\n{}")
+
+	if _, err := loadAuditConfigFile(configPath); err == nil {
+		t.Fatal("expected multiple JSON values error")
+	}
+}
+
 func TestLoadAuditConfigFileAppliesLegacyPathAndSwitchSections(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{
@@ -182,18 +325,15 @@ func TestLoadAuditConfigFileAppliesLegacyPathAndSwitchSections(t *testing.T) {
 	if config.Profile.Name != "prod" || config.ShouldDiscoverSupervisor() || config.ShouldDiscoverSystemd() {
 		t.Fatalf("unexpected profile switches: %+v", config)
 	}
-
 	if config.ColorMode != model.ColorModeNever || !config.Interactive || !config.ScreenReader {
 		t.Fatalf("unexpected output config: %+v", config)
 	}
-
 	if config.MaxOutputBytes != 2048 || config.WorkerLimit != 3 {
 		t.Fatalf("unexpected advanced config: %+v", config)
 	}
 }
 
 func TestLoadAuditConfigFileRejectsInvalidAdvancedTimeout(t *testing.T) {
-	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.json")
 	writeConfigFileForTest(t, configPath, `{
@@ -209,10 +349,11 @@ func TestLoadAuditConfigFileRejectsInvalidAdvancedTimeout(t *testing.T) {
 }
 
 func TestApplyAuditSectionAppliesAllSupportedFields(t *testing.T) {
-	t.Parallel()
 
 	config := model.DefaultAuditConfig()
 	format := "json"
+	reportJSONPath := "/tmp/report.json"
+	reportMarkdownPath := "/tmp/report.md"
 	verbosity := "verbose"
 	scope := "host"
 	appPath := " /srv/www/shop/current "
@@ -224,17 +365,19 @@ func TestApplyAuditSectionAppliesAllSupportedFields(t *testing.T) {
 	workerLimit := 6
 
 	err := applyAuditSection(&config, fileAuditConfig{
-		Format:         &format,
-		Verbosity:      &verbosity,
-		Scope:          &scope,
-		AppPath:        &appPath,
-		ScanRoots:      []string{"/srv/apps", "/opt/apps"},
-		Interactive:    &interactive,
-		Color:          &color,
-		ScreenReader:   &screenReader,
-		CommandTimeout: &commandTimeout,
-		MaxOutputBytes: &maxOutputBytes,
-		WorkerLimit:    &workerLimit,
+		Format:             &format,
+		ReportJSONPath:     &reportJSONPath,
+		ReportMarkdownPath: &reportMarkdownPath,
+		Verbosity:          &verbosity,
+		Scope:              &scope,
+		AppPath:            &appPath,
+		ScanRoots:          []string{"/srv/apps", "/opt/apps"},
+		Interactive:        &interactive,
+		Color:              &color,
+		ScreenReader:       &screenReader,
+		CommandTimeout:     &commandTimeout,
+		MaxOutputBytes:     &maxOutputBytes,
+		WorkerLimit:        &workerLimit,
 	})
 	if err != nil {
 		t.Fatalf("applyAuditSection() error = %v", err)
@@ -242,6 +385,12 @@ func TestApplyAuditSectionAppliesAllSupportedFields(t *testing.T) {
 
 	if config.Format != model.OutputFormatJSON {
 		t.Fatalf("expected JSON output format, got %q", config.Format)
+	}
+	if config.ReportJSONPath != reportJSONPath {
+		t.Fatalf("expected report json path, got %q", config.ReportJSONPath)
+	}
+	if config.ReportMarkdownPath != reportMarkdownPath {
+		t.Fatalf("expected report markdown path, got %q", config.ReportMarkdownPath)
 	}
 	if config.Verbosity != model.VerbosityVerbose {
 		t.Fatalf("expected verbose verbosity, got %q", config.Verbosity)
@@ -267,7 +416,6 @@ func TestApplyAuditSectionAppliesAllSupportedFields(t *testing.T) {
 }
 
 func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
-	t.Parallel()
 
 	config := model.DefaultAuditConfig()
 	useDefaultPatterns := false

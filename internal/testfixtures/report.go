@@ -9,8 +9,8 @@ import (
 func SampleReport() (model.Report, error) {
 	findings := []model.Finding{
 		{
-			ID:          "filesystem.writable_env",
-			CheckID:     "filesystem.writable_env",
+			ID:          "filesystem.permissions.runtime_owned_env.var.www.shop.env",
+			CheckID:     "filesystem.permissions",
 			Class:       model.FindingClassDirect,
 			Severity:    model.SeverityCritical,
 			Confidence:  model.ConfidenceConfirmed,
@@ -26,8 +26,8 @@ func SampleReport() (model.Report, error) {
 			},
 		},
 		{
-			ID:          "laravel.debug_mode",
-			CheckID:     "laravel.debug_mode",
+			ID:          "source.config.debug_true.var.www.shop",
+			CheckID:     "source.config",
 			Class:       model.FindingClassHeuristic,
 			Severity:    model.SeverityMedium,
 			Confidence:  model.ConfidencePossible,
@@ -42,8 +42,8 @@ func SampleReport() (model.Report, error) {
 			},
 		},
 		{
-			ID:          "forensics.unexpected_php_file",
-			CheckID:     "forensics.unexpected_php_file",
+			ID:          "nginx.boundaries.upload_execution.etc.nginx.sites-enabled.shop.conf",
+			CheckID:     "nginx.boundaries",
 			Class:       model.FindingClassCompromiseIndicator,
 			Severity:    model.SeverityHigh,
 			Confidence:  model.ConfidenceProbable,

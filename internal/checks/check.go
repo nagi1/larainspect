@@ -11,6 +11,7 @@ import (
 
 type Check interface {
 	ID() string
+	Description() string
 	Run(context.Context, model.ExecutionContext, model.Snapshot) (model.CheckResult, error)
 }
 

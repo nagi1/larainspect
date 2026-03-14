@@ -75,8 +75,8 @@ func (file *installedPackagesFile) UnmarshalJSON(data []byte) error {
 }
 
 func (service SnapshotService) discoverCandidateRootsFromScanRoot(ctx context.Context, scanRoot string) ([]string, []model.Unknown) {
-	candidateRoots := []string{}
-	unknowns := []model.Unknown{}
+	candidateRoots := make([]string, 0, 8)
+	unknowns := make([]model.Unknown, 0, 4)
 	seenRoots := map[string]struct{}{}
 	cleanScanRoot := filepath.Clean(strings.TrimSpace(scanRoot))
 	if cleanScanRoot == "." || cleanScanRoot == "" {
@@ -147,9 +147,10 @@ func (service SnapshotService) inspectLaravelApplication(ctx context.Context, ro
 	}
 
 	app := model.LaravelApp{
-		RootPath:    rootPath,
-		MarkerFiles: markerFiles,
-		Packages:    []model.PackageRecord{},
+		RootPath:          rootPath,
+		MarkerFiles:       markerFiles,
+		Packages:          []model.PackageRecord{},
+		InstalledPackages: map[string]string{},
 	}
 
 	resolvedPath, resolveErr := service.resolveLinks(rootPath)
@@ -167,46 +168,40 @@ func (service SnapshotService) inspectLaravelApplication(ctx context.Context, ro
 		unknowns = append(unknowns, *manifestUnknown)
 	}
 	if ok {
-		manifest, parseErr := parseComposerManifest(manifestBytes)
+		manifest, parseErr := unmarshalJSON[composerManifest](manifestBytes)
 		if parseErr != nil {
 			unknowns = append(unknowns, newParseUnknown(appDiscoveryCheckID, "Unable to parse composer.json", manifestPath, parseErr))
 		} else {
 			app.AppName = manifest.Name
+			app.PHPVersion = composerRequirement(manifest, "php")
+			app.LaravelVersion = composerRequirement(manifest, "laravel/framework")
 			app.Packages = mergePackageRecords(app.Packages, packageRecordsFromComposerManifest(manifest))
 		}
 	}
 
 	lockPath := filepath.Join(rootPath, "composer.lock")
-	lockBytes, lockUnknown := service.readOptionalFile(lockPath, "Unable to read composer.lock")
-	if lockUnknown != nil {
-		unknowns = append(unknowns, *lockUnknown)
-	}
-	if len(lockBytes) > 0 {
-		lockFile, parseErr := parseComposerLockFile(lockBytes)
-		if parseErr != nil {
-			unknowns = append(unknowns, newParseUnknown(appDiscoveryCheckID, "Unable to parse composer.lock", lockPath, parseErr))
-		} else {
-			app.Packages = mergePackageRecords(app.Packages, packageRecordsFromLockPackages("composer.lock", append(lockFile.Packages, lockFile.PackagesDev...)))
+	service.mergeOptionalComposerPackages(&app, &unknowns, lockPath, "Unable to read composer.lock", "Unable to parse composer.lock", func(data []byte) ([]composerLockPackage, error) {
+		lockFile, err := unmarshalJSON[composerLockFile](data)
+		if err != nil {
+			return nil, err
 		}
-	}
+		return append(lockFile.Packages, lockFile.PackagesDev...), nil
+	}, "composer.lock")
 
 	installedPackagesPath := filepath.Join(rootPath, "vendor/composer/installed.json")
-	installedBytes, installedUnknown := service.readOptionalFile(installedPackagesPath, "Unable to read vendor/composer/installed.json")
-	if installedUnknown != nil {
-		unknowns = append(unknowns, *installedUnknown)
-	}
-	if len(installedBytes) > 0 {
-		installedFile, parseErr := parseInstalledPackagesFile(installedBytes)
-		if parseErr != nil {
-			unknowns = append(unknowns, newParseUnknown(appDiscoveryCheckID, "Unable to parse vendor/composer/installed.json", installedPackagesPath, parseErr))
-		} else {
-			app.Packages = mergePackageRecords(app.Packages, packageRecordsFromLockPackages("vendor/composer/installed.json", installedFile.Packages))
+	service.mergeOptionalComposerPackages(&app, &unknowns, installedPackagesPath, "Unable to read vendor/composer/installed.json", "Unable to parse vendor/composer/installed.json", func(data []byte) ([]composerLockPackage, error) {
+		installedFile, err := unmarshalJSON[installedPackagesFile](data)
+		if err != nil {
+			return nil, err
 		}
-	}
+		return installedFile.Packages, nil
+	}, "vendor/composer/installed.json")
 
 	model.SortPackageRecords(app.Packages)
+	app.LaravelVersion = packageVersionForName(app.Packages, "laravel/framework", app.LaravelVersion)
 
-	keyPaths, environment, artifacts, sourceMatches, deploymentInfo, metadataUnknowns := service.collectApplicationMetadata(ctx, rootPath, app.ResolvedPath)
+	rootRecord, keyPaths, environment, artifacts, sourceMatches, deploymentInfo, metadataUnknowns := service.collectApplicationMetadata(ctx, rootPath, app.ResolvedPath)
+	app.RootRecord = rootRecord
 	app.KeyPaths = keyPaths
 	app.Environment = environment
 	app.Artifacts = artifacts
@@ -263,31 +258,61 @@ func (service SnapshotService) readOptionalFile(path string, title string) ([]by
 	}
 }
 
-func parseComposerManifest(data []byte) (composerManifest, error) {
-	var manifest composerManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return composerManifest{}, err
+// mergeOptionalComposerPackages reads an optional composer file, parses it, and merges
+// the resulting package records into the app.
+func (service SnapshotService) mergeOptionalComposerPackages(
+	app *model.LaravelApp,
+	unknowns *[]model.Unknown,
+	path string,
+	readTitle string,
+	parseTitle string,
+	parsePackages func([]byte) ([]composerLockPackage, error),
+	source string,
+) {
+	fileBytes, fileUnknown := service.readOptionalFile(path, readTitle)
+	if fileUnknown != nil {
+		*unknowns = append(*unknowns, *fileUnknown)
+	}
+	if len(fileBytes) == 0 {
+		return
 	}
 
-	return manifest, nil
+	packages, parseErr := parsePackages(fileBytes)
+	if parseErr != nil {
+		*unknowns = append(*unknowns, newParseUnknown(appDiscoveryCheckID, parseTitle, path, parseErr))
+		return
+	}
+
+	app.Packages = mergePackageRecords(app.Packages, packageRecordsFromLockPackages(source, packages))
+	mergeInstalledPackages(app, packages)
+	app.LaravelVersion = packageVersionForName(app.Packages, "laravel/framework", app.LaravelVersion)
 }
 
-func parseComposerLockFile(data []byte) (composerLockFile, error) {
-	var lockFile composerLockFile
-	if err := json.Unmarshal(data, &lockFile); err != nil {
-		return composerLockFile{}, err
+// unmarshalJSON is a generic JSON parser replacing the three identical parseComposer* functions.
+func unmarshalJSON[T any](data []byte) (T, error) {
+	var result T
+	if err := json.Unmarshal(data, &result); err != nil {
+		return result, err
 	}
-
-	return lockFile, nil
+	return result, nil
 }
 
-func parseInstalledPackagesFile(data []byte) (installedPackagesFile, error) {
-	var installedFile installedPackagesFile
-	if err := json.Unmarshal(data, &installedFile); err != nil {
-		return installedPackagesFile{}, err
+// mergeInstalledPackages populates the full InstalledPackages map (name → version)
+// from all packages in a composer source. Unlike Packages (which tracks only
+// security-relevant packages), InstalledPackages catalogs every dependency
+// for vulnerability intelligence.
+func mergeInstalledPackages(app *model.LaravelApp, packages []composerLockPackage) {
+	if app.InstalledPackages == nil {
+		app.InstalledPackages = make(map[string]string, len(packages))
 	}
-
-	return installedFile, nil
+	for _, pkg := range packages {
+		name := strings.TrimSpace(pkg.Name)
+		version := strings.TrimSpace(pkg.Version)
+		if name == "" || version == "" {
+			continue
+		}
+		app.InstalledPackages[name] = version
+	}
 }
 
 func packageRecordsFromComposerManifest(manifest composerManifest) []model.PackageRecord {
@@ -305,6 +330,27 @@ func packageRecordsFromComposerManifest(manifest composerManifest) []model.Packa
 	}
 
 	return mapValues(relevantPackages)
+}
+
+func composerRequirement(manifest composerManifest, packageName string) string {
+	if version, found := manifest.Require[packageName]; found {
+		return version
+	}
+	if version, found := manifest.RequireDev[packageName]; found {
+		return version
+	}
+
+	return ""
+}
+
+func packageVersionForName(packages []model.PackageRecord, packageName string, fallback string) string {
+	for _, packageRecord := range packages {
+		if packageRecord.Name == packageName && strings.TrimSpace(packageRecord.Version) != "" {
+			return packageRecord.Version
+		}
+	}
+
+	return strings.TrimSpace(fallback)
 }
 
 func packageRecordsFromLockPackages(source string, packages []composerLockPackage) []model.PackageRecord {

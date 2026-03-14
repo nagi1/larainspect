@@ -10,4 +10,9 @@ coverage.out
 # Local Go workspace caches
 .gocache/
 
+.tmp/
+larainspect
 next-source/
+next-source-tasks/
+next-source.zip
+internal-docs

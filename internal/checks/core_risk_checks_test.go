@@ -54,9 +54,13 @@ func TestSecretsExposureCheckReportsDebugBackupsAndUploadPHP(t *testing.T) {
 
 	app := completeLaravelApp("/var/www/shop")
 	app.Environment = model.EnvironmentInfo{
-		AppDebugDefined: true,
-		AppDebugValue:   "true",
-		AppKeyDefined:   false,
+		AppDebugDefined:   true,
+		AppDebugValue:     "true",
+		AppEnvDefined:     true,
+		AppEnvValue:       "local",
+		AppKeyDefined:     false,
+		DBPasswordDefined: true,
+		DBPasswordEmpty:   true,
 	}
 	app.Artifacts = []model.ArtifactRecord{
 		{
@@ -84,8 +88,17 @@ func TestSecretsExposureCheckReportsDebugBackupsAndUploadPHP(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if len(result.Findings) != 5 {
-		t.Fatalf("expected 5 findings, got %+v", result.Findings)
+	if len(result.Findings) != 7 {
+		t.Fatalf("expected 7 findings, got %+v", result.Findings)
+	}
+
+	for _, title := range []string{
+		"APP_ENV indicates a non-production deployment mode",
+		"DB_PASSWORD is empty in .env",
+	} {
+		if !findingTitleExists(result.Findings, title) {
+			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
+		}
 	}
 }
 
@@ -133,6 +146,66 @@ func TestNginxBoundaryCheckReportsDocrootExecutionAndMissingDenyRules(t *testing
 	}
 }
 
+func TestNginxBoundaryCheckReportsExecutablePublicPHPArtifacts(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Artifacts = []model.ArtifactRecord{
+		{
+			Kind:             model.ArtifactKindPublicPHPFile,
+			WithinPublicPath: true,
+			Path:             newArtifactPathRecord("/var/www/shop", "public/probe.php"),
+		},
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:            "/etc/nginx/sites-enabled/shop.conf",
+			Root:                  "/var/www/shop/public",
+			HasGenericPHPLocation: true,
+			GenericPHPLocations:   []string{`~ \.php$`},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if !findingTitleExists(result.Findings, "Served public tree contains PHP files that Nginx may execute directly") {
+		t.Fatalf("expected unexpected public php finding, got %+v", result.Findings)
+	}
+}
+
+func TestNginxBoundaryCheckReportsPublicPHPArtifactsEvenWithoutGenericHandler(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Artifacts = []model.ArtifactRecord{
+		{
+			Kind:             model.ArtifactKindPublicPHPFile,
+			WithinPublicPath: true,
+			Path:             newArtifactPathRecord("/var/www/shop", "public/status.php"),
+		},
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:             "/etc/nginx/sites-enabled/shop.conf",
+			Root:                   "/var/www/shop/public",
+			HasFrontControllerOnly: true,
+			FrontControllerPaths:   []string{`= /index.php`},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if !findingTitleExists(result.Findings, "Served public tree contains PHP files beyond the Laravel front controller") {
+		t.Fatalf("expected public php boundary finding, got %+v", result.Findings)
+	}
+}
+
 func TestPHPFPMSecurityCheckReportsRootExposureAndSharedPools(t *testing.T) {
 	t.Parallel()
 
@@ -154,13 +227,49 @@ func TestPHPFPMSecurityCheckReportsRootExposureAndSharedPools(t *testing.T) {
 				ListenMode: "0666",
 			},
 			{
-				ConfigPath: "/etc/php/8.3/fpm/pool.d/shared.conf",
-				Name:       "shared",
-				User:       "www-data",
-				Listen:     "/run/php/shared.sock",
-				ListenMode: "0666",
+				ConfigPath:  "/etc/php/8.3/fpm/pool.d/shared.conf",
+				Name:        "shared",
+				User:        "www-data",
+				Listen:      "/run/php/shared.sock",
+				ListenOwner: "www-data",
+				ListenGroup: "www-data",
+				ListenMode:  "0666",
 			},
 		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 5 {
+		t.Fatalf("expected 5 findings, got %+v", result.Findings)
+	}
+}
+
+func TestFilesystemPermissionsCheckReportsRuntimeWritableCodeAndRuntimeOwnedEnv(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.RootRecord.OwnerName = "www-data"
+	setPathRecord(&app, "app", model.PathKindDirectory, 0o770)
+	setPathOwnership(&app, "app", "deploy", "www-data")
+	setPathOwnership(&app, ".env", "www-data", "www-data")
+
+	result, err := checks.FilesystemPermissionsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:         "/etc/nginx/sites-enabled/shop.conf",
+			Root:               "/var/www/shop/public",
+			FastCGIPassTargets: []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath: "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:       "shop",
+			User:       "www-data",
+			Group:      "www-data",
+			Listen:     "/run/php/shop.sock",
+			ListenMode: "0660",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -169,11 +278,199 @@ func TestPHPFPMSecurityCheckReportsRootExposureAndSharedPools(t *testing.T) {
 	if len(result.Findings) != 4 {
 		t.Fatalf("expected 4 findings, got %+v", result.Findings)
 	}
+
+	for _, title := range []string{
+		".env is owned by a Laravel runtime identity",
+		"Laravel project root is owned by a runtime identity",
+		"Laravel runtime identities can write code or configuration paths",
+		"Laravel path permissions exceed the hardened baseline",
+	} {
+		if !findingTitleExists(result.Findings, title) {
+			t.Fatalf("expected finding title %q, got %+v", title, result.Findings)
+		}
+	}
+}
+
+func TestFilesystemPermissionsCheckReportsWritablePathBaselineDrift(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	setPathRecord(&app, "storage", model.PathKindDirectory, 0o750)
+	setPathOwnership(&app, "storage", "deploy", "deploy")
+
+	result, err := checks.FilesystemPermissionsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:         "/etc/nginx/sites-enabled/shop.conf",
+			Root:               "/var/www/shop/public",
+			FastCGIPassTargets: []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath: "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:       "shop",
+			User:       "www-data",
+			Group:      "www-data",
+			Listen:     "/run/php/shop.sock",
+			ListenMode: "0660",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 || result.Findings[0].Title != "Writable Laravel paths do not match the hardened writable baseline" {
+		t.Fatalf("expected writable baseline finding, got %+v", result.Findings)
+	}
+}
+
+func TestNginxBoundaryCheckReportsUnexpectedPublicStorageSymlinkTarget(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	setPathOwnership(&app, "public/storage", "deploy", "www-data")
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+
+		app.KeyPaths[index].ResolvedPath = "/var/www/shop/shared/private"
+		app.KeyPaths[index].TargetKind = model.PathKindDirectory
+		break
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage points outside the expected Laravel public storage target" {
+		t.Fatalf("expected unexpected public/storage symlink finding, got %+v", result.Findings)
+	}
+}
+
+func TestNginxBoundaryCheckReportsPublicStorageExposureControl(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	setPathOwnership(&app, "public/storage", "deploy", "www-data")
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+
+		app.KeyPaths[index].ResolvedPath = "/var/www/shop/shared/storage/app/public"
+		app.KeyPaths[index].TargetKind = model.PathKindDirectory
+		break
+	}
+	app.Deployment = model.DeploymentInfo{
+		UsesReleaseLayout: true,
+		CurrentPath:       "/var/www/shop/current",
+		ReleaseRoot:       "/var/www/shop/releases",
+		SharedPath:        "/var/www/shop/shared",
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:           "/etc/nginx/sites-enabled/shop.conf",
+			Root:                 "/var/www/shop/current/public",
+			HiddenFilesDenied:    true,
+			SensitiveFilesDenied: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage exposes Laravel public-disk files through the web root" {
+		t.Fatalf("expected public/storage exposure control finding, got %+v", result.Findings)
+	}
+}
+
+func TestNginxBoundaryCheckReportsConditionalPublicStorageBoundaryWithoutMatchedSite(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	setPathOwnership(&app, "public/storage", "deploy", "www-data")
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+
+		app.KeyPaths[index].ResolvedPath = "/var/www/shop/current/storage/app/public"
+		app.KeyPaths[index].TargetKind = model.PathKindDirectory
+		break
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected one finding, got %+v", result.Findings)
+	}
+	if result.Findings[0].Title != "public/storage symlink exists and should be reviewed as a public boundary" {
+		t.Fatalf("expected conditional public/storage control finding, got %+v", result.Findings)
+	}
+	if result.Findings[0].Severity != model.SeverityInformational {
+		t.Fatalf("expected informational severity, got %+v", result.Findings[0])
+	}
+}
+
+func TestNginxBoundaryCheckReportsPrivatePublicSymlink(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	app.Artifacts = []model.ArtifactRecord{{
+		Kind: model.ArtifactKindPublicSymlink,
+		Path: model.PathRecord{
+			RelativePath: "public/private-assets",
+			AbsolutePath: "/var/www/shop/current/public/private-assets",
+			ResolvedPath: "/var/www/shop/current/storage/app/private",
+			PathKind:     model.PathKindSymlink,
+			TargetKind:   model.PathKindDirectory,
+			Inspected:    true,
+			Exists:       true,
+			Permissions:  0o777,
+			OwnerName:    "deploy",
+			GroupName:    "www-data",
+		},
+	}}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 || result.Findings[0].Title != "A public symlink resolves into a private Laravel path" {
+		t.Fatalf("expected private public symlink finding, got %+v", result.Findings)
+	}
 }
 
 func completeLaravelApp(rootPath string) model.LaravelApp {
 	app := model.LaravelApp{
 		RootPath: rootPath,
+		RootRecord: model.PathRecord{
+			RelativePath: ".",
+			AbsolutePath: rootPath,
+			PathKind:     model.PathKindDirectory,
+			TargetKind:   model.PathKindDirectory,
+			Inspected:    true,
+			Exists:       true,
+			Permissions:  0o750,
+			OwnerName:    "deploy",
+			GroupName:    "www-data",
+		},
 		Environment: model.EnvironmentInfo{
 			AppDebugDefined: true,
 			AppDebugValue:   "false",
@@ -187,8 +484,18 @@ func completeLaravelApp(rootPath string) model.LaravelApp {
 			continue
 		}
 
-		permissions := uint32(0o755)
-		if expectation.Kind == model.PathKindFile {
+		permissions := uint32(0o750)
+		switch expectation.RelativePath {
+		case "storage", "storage/logs", "bootstrap/cache":
+			permissions = 0o770
+		case "bootstrap/cache/config.php":
+			permissions = 0o660
+		default:
+			if expectation.Kind == model.PathKindFile {
+				permissions = 0o640
+			}
+		}
+		if expectation.RelativePath == ".env" {
 			permissions = 0o640
 		}
 
@@ -200,6 +507,8 @@ func completeLaravelApp(rootPath string) model.LaravelApp {
 			Inspected:    true,
 			Exists:       true,
 			Permissions:  permissions,
+			OwnerName:    "deploy",
+			GroupName:    "www-data",
 		})
 	}
 
@@ -241,8 +550,22 @@ func setPathRecord(app *model.LaravelApp, relativePath string, kind model.PathKi
 		Inspected:    true,
 		Exists:       true,
 		Permissions:  permissions,
+		OwnerName:    "deploy",
+		GroupName:    "www-data",
 	})
 	model.SortPathRecords(app.KeyPaths)
+}
+
+func setPathOwnership(app *model.LaravelApp, relativePath string, owner string, group string) {
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != relativePath {
+			continue
+		}
+
+		app.KeyPaths[index].OwnerName = owner
+		app.KeyPaths[index].GroupName = group
+		return
+	}
 }
 
 func newArtifactPathRecord(rootPath string, relativePath string) model.PathRecord {
@@ -254,5 +577,7 @@ func newArtifactPathRecord(rootPath string, relativePath string) model.PathRecor
 		Inspected:    true,
 		Exists:       true,
 		Permissions:  0o644,
+		OwnerName:    "deploy",
+		GroupName:    "www-data",
 	}
 }

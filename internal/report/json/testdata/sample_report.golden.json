@@ -23,8 +23,8 @@
   },
   "direct_findings": [
     {
-      "id": "filesystem.writable_env",
-      "check_id": "filesystem.writable_env",
+      "id": "filesystem.permissions.runtime_owned_env.var.www.shop.env",
+      "check_id": "filesystem.permissions",
       "class": "direct_finding",
       "severity": "critical",
       "confidence": "confirmed",
@@ -51,8 +51,8 @@
   ],
   "heuristic_findings": [
     {
-      "id": "laravel.debug_mode",
-      "check_id": "laravel.debug_mode",
+      "id": "source.config.debug_true.var.www.shop",
+      "check_id": "source.config",
       "class": "heuristic_finding",
       "severity": "medium",
       "confidence": "possible",
@@ -75,8 +75,8 @@
   ],
   "compromise_indicators": [
     {
-      "id": "forensics.unexpected_php_file",
-      "check_id": "forensics.unexpected_php_file",
+      "id": "nginx.boundaries.upload_execution.etc.nginx.sites-enabled.shop.conf",
+      "check_id": "nginx.boundaries",
       "class": "possible_compromise_indicator",
       "severity": "high",
       "confidence": "probable",

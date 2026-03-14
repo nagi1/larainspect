@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -159,6 +160,113 @@ class AppServiceProvider
 	if containsSourceMatch(livewireMatches, "livewire.component.detected") || containsSourceMatch(livewireMatches, "livewire.component.public_sensitive_property") {
 		t.Fatalf("did not expect commented Livewire component/property matches, got %+v", livewireMatches)
 	}
+
+	configMatches := detectFrameworkSourceMatches("config/app.php", `<?php
+return [
+    // 'debug' => true,
+    'debug' => env('APP_DEBUG', false),
+];
+`)
+	if containsSourceMatch(configMatches, "laravel.config.app.debug_true") {
+		t.Fatalf("did not expect commented config debug match, got %+v", configMatches)
+	}
+}
+
+func TestDetectFrameworkSourceMatchesCoversConfigAndEnvExampleSignals(t *testing.T) {
+	t.Parallel()
+
+	configMatches := detectFrameworkSourceMatches("config/cors.php", `<?php
+return [
+    'allowed_origins' => ['*'],
+    'supports_credentials' => true,
+];
+`)
+	for _, ruleID := range []string{
+		"laravel.config.cors.wildcard_origins",
+		"laravel.config.cors.supports_credentials_true",
+	} {
+		if !containsSourceMatch(configMatches, ruleID) {
+			t.Fatalf("expected config rule %q, got %+v", ruleID, configMatches)
+		}
+	}
+
+	mailMatches := detectFrameworkSourceMatches("config/mail.php", `<?php
+return [
+    'password' => 'super-secret-password',
+];
+`)
+	if !containsSourceMatch(mailMatches, "laravel.config.mail.hardcoded_password") {
+		t.Fatalf("expected hardcoded mail password match, got %+v", mailMatches)
+	}
+
+	envExampleMatches := detectFrameworkSourceMatches(".env.example", `
+DB_PASSWORD=real-pass-123
+MAIL_PASSWORD=changeme
+`)
+	if !containsSourceMatch(envExampleMatches, "laravel.env.example.real_secret_value") {
+		t.Fatalf("expected .env.example secret-like match, got %+v", envExampleMatches)
+	}
+
+	securityMatches := detectFrameworkSourceMatches("app/Http/Controllers/AuthController.php", `<?php
+Auth::loginUsingId($request->input('id'));
+$user->whereRaw("name = '$name'");
+eval($payload);
+$request->validate([
+    'avatar' => 'required|file|mimes:svg,png',
+    'document' => 'required|file',
+]);
+`)
+	for _, ruleID := range []string{
+		"laravel.auth.login_using_id_variable",
+		"laravel.inject.raw_query_variable",
+		"laravel.inject.eval",
+		"laravel.security.upload.risky_web_types",
+		"laravel.security.upload.risky_web_types_extension_only",
+		"laravel.security.upload.file_without_constraints",
+	} {
+		if !containsSourceMatch(securityMatches, ruleID) {
+			t.Fatalf("expected source security rule %q, got %+v", ruleID, securityMatches)
+		}
+	}
+
+	mimeOnlyMatches := detectFrameworkSourceMatches("app/Http/Controllers/UploadController.php", `<?php
+$request->validate([
+    'document' => 'required|file|mimetypes:text/html',
+]);
+`)
+	if !containsSourceMatch(mimeOnlyMatches, "laravel.security.upload.risky_web_types") ||
+		!containsSourceMatch(mimeOnlyMatches, "laravel.security.upload.risky_web_types_mime_only") {
+		t.Fatalf("expected MIME-only risky upload rules, got %+v", mimeOnlyMatches)
+	}
+
+	combinedTypeMatches := detectFrameworkSourceMatches("app/Http/Controllers/SaferUploadController.php", `<?php
+$request->validate([
+    'document' => 'required|file|mimes:svg|mimetypes:image/svg+xml',
+]);
+`)
+	if containsSourceMatch(combinedTypeMatches, "laravel.security.upload.risky_web_types_extension_only") ||
+		containsSourceMatch(combinedTypeMatches, "laravel.security.upload.risky_web_types_mime_only") {
+		t.Fatalf("did not expect single-sided risky upload rules when both checks are present, got %+v", combinedTypeMatches)
+	}
+
+	bladeMatches := detectFrameworkSourceMatches("resources/views/profile.blade.php", `
+{{-- {!! $commented !!} --}}
+{!! request('name') !!}
+<script>var state = "{{ $state }}";</script>
+@dump($debug)
+`)
+	for _, ruleID := range []string{
+		"laravel.xss.blade_raw_request",
+		"laravel.xss.script_variable_interpolation",
+		"laravel.debug.blade_dump_directive",
+	} {
+		if !containsSourceMatch(bladeMatches, ruleID) {
+			t.Fatalf("expected blade security rule %q, got %+v", ruleID, bladeMatches)
+		}
+	}
+	if containsSourceMatch(bladeMatches, "laravel.xss.blade_raw_variable") {
+		t.Fatalf("did not expect commented raw blade output to match, got %+v", bladeMatches)
+	}
 }
 
 func TestCollectSourceMatchesFromOptionalFileHandlesEdgeCases(t *testing.T) {
@@ -259,6 +367,16 @@ func TestFrameworkSourceHelperFunctions(t *testing.T) {
 	if got := lineNumberForOffset("one\ntwo\nthree", 5); got != 2 {
 		t.Fatalf("lineNumberForOffset() = %d, want 2", got)
 	}
+	if got, found := firstMatchingLineNumber("alpha\nbeta\ngamma", regexp.MustCompile(`beta`), nil); !found || got != 2 {
+		t.Fatalf("firstMatchingLineNumber() = (%d, %t), want (2, true)", got, found)
+	}
+	if got, found := firstMatchingLineNumber("alpha env(value)\nbeta", regexp.MustCompile(`env`), []string{"env("}); found || got != 0 {
+		t.Fatalf("firstMatchingLineNumber() forbidden = (%d, %t), want (0, false)", got, found)
+	}
+	envMatches := detectFrameworkSourceMatches(".env.example", "DB_PASSWORD=real-secret-123\nMAIL_PASSWORD=changeme\n")
+	if !containsSourceMatch(envMatches, "laravel.env.example.real_secret_value") {
+		t.Fatalf("expected yaml env-example rule match, got %+v", envMatches)
+	}
 
 	stripped := stripPHPCommentsPreservingNewlines("<?php\n// comment\n'value' /* block */\n")
 	if strings.Contains(stripped, "comment") || strings.Contains(stripped, "block") {
@@ -266,6 +384,69 @@ func TestFrameworkSourceHelperFunctions(t *testing.T) {
 	}
 	if !strings.Contains(stripped, "'value'") {
 		t.Fatalf("expected string literals to be preserved, got %q", stripped)
+	}
+
+	strippedBlade := stripBladeCommentsPreservingNewlines("{{-- secret --}}\n<div>{{ $name }}</div>")
+	if strings.Contains(strippedBlade, "secret") || !strings.Contains(strippedBlade, "{{ $name }}") {
+		t.Fatalf("unexpected stripBladeCommentsPreservingNewlines() result %q", strippedBlade)
+	}
+
+	unclosedBlade := stripBladeCommentsPreservingNewlines("{{-- secret\n<div>")
+	if strings.Contains(unclosedBlade, "secret") || !strings.Contains(unclosedBlade, "\n") {
+		t.Fatalf("unexpected unclosed blade comment stripping result %q", unclosedBlade)
+	}
+}
+
+func TestFrameworkSourceAdditionalConfigCoverage(t *testing.T) {
+	t.Parallel()
+
+	matches := appendSourceMatchIfContainsAll(nil, "app/Models/User.php", "alpha beta gamma", "rule.all", "matched all", []string{"alpha", "beta"}, []string{"gamma"})
+	if !containsSourceMatch(matches, "rule.all") {
+		t.Fatalf("expected appendSourceMatchIfContainsAll() to add a match, got %+v", matches)
+	}
+
+	lineMatches := appendSourceMatchIfLineMatchesRegex(nil, "config/auth.php", "'expire' => 180", "rule.line", "line matched", regexp.MustCompile(`expire`))
+	if !containsSourceMatch(lineMatches, "rule.line") {
+		t.Fatalf("expected appendSourceMatchIfLineMatchesRegex() to add a match, got %+v", lineMatches)
+	}
+
+	filteredMatches := appendSourceMatchIfLineMatchesRegexWithoutSubstrings(nil, "resources/views/profile.blade.php", "{!! clean($safe) !!}\n{!! $unsafe !!}", "rule.filtered", "filtered match", regexp.MustCompile(`\{!!\s*\$[^!\n]*!!\}`), []string{"clean("})
+	if !containsSourceMatch(filteredMatches, "rule.filtered") {
+		t.Fatalf("expected appendSourceMatchIfLineMatchesRegexWithoutSubstrings() to keep the unsafe line, got %+v", filteredMatches)
+	}
+
+	configCases := []struct {
+		path   string
+		body   string
+		ruleID string
+	}{
+		{"config/auth.php", "<?php\nreturn ['expire' => 180];\n", "laravel.config.auth.password_reset_expire_long"},
+		{"config/session.php", "<?php\nreturn ['http_only' => false, 'same_site' => 'none'];\n", "laravel.config.session.http_only_false"},
+		{"config/database.php", "<?php\nreturn ['password' => 'super-secret-password'];\n", "laravel.config.database.hardcoded_password"},
+		{"config/broadcasting.php", "<?php\nreturn ['secret' => 'abcdef1234567890'];\n", "laravel.config.broadcasting.hardcoded_secret"},
+		{"config/logging.php", "<?php\nreturn ['url' => 'https://hooks.slack.com/services/T1/B1/example'];\n", "laravel.config.logging.hardcoded_slack_webhook"},
+	}
+
+	for _, configCase := range configCases {
+		configCase := configCase
+		t.Run(configCase.path, func(t *testing.T) {
+			t.Parallel()
+
+			caseMatches := detectFrameworkSourceMatches(configCase.path, configCase.body)
+			if !containsSourceMatch(caseMatches, configCase.ruleID) {
+				t.Fatalf("expected config rule %q, got %+v", configCase.ruleID, caseMatches)
+			}
+		})
+	}
+
+	securityMatches := detectFrameworkSourceMatches("resources/views/profile.blade.php", "{!! clean($safe) !!}\n{!! $unsafe !!}\nProcess::run($command);\nexec($command);")
+	for _, ruleID := range []string{
+		"laravel.xss.blade_raw_variable",
+		"laravel.inject.shell_exec",
+	} {
+		if !containsSourceMatch(securityMatches, ruleID) {
+			t.Fatalf("expected security rule %q, got %+v", ruleID, securityMatches)
+		}
 	}
 }
 

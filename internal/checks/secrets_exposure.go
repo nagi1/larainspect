@@ -10,6 +10,8 @@ import (
 
 const secretsExposureCheckID = "secrets.exposure"
 
+var _ Check = SecretsExposureCheck{}
+
 type SecretsExposureCheck struct{}
 
 func init() {
@@ -20,6 +22,10 @@ func (SecretsExposureCheck) ID() string {
 	return secretsExposureCheckID
 }
 
+func (SecretsExposureCheck) Description() string {
+	return "Inspect Laravel secrets, backups, and sensitive file exposure risks."
+}
+
 func (SecretsExposureCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
 
@@ -28,12 +34,20 @@ func (SecretsExposureCheck) Run(_ context.Context, _ model.ExecutionContext, sna
 			findings = append(findings, debugModeFinding)
 		}
 
+		if nonProductionAppEnvFinding, found := buildNonProductionAppEnvFinding(app); found {
+			findings = append(findings, nonProductionAppEnvFinding)
+		}
+
 		if missingAppKeyFinding, found := buildMissingAppKeyFinding(app); found {
 			findings = append(findings, missingAppKeyFinding)
 		}
 
 		if invalidAppKeyFinding, found := buildInvalidAppKeyFinding(app); found {
 			findings = append(findings, invalidAppKeyFinding)
+		}
+
+		if emptyDatabasePasswordFinding, found := buildEmptyDatabasePasswordFinding(app); found {
+			findings = append(findings, emptyDatabasePasswordFinding)
 		}
 
 		if worldReadableConfigCacheFinding, found := buildWorldReadableConfigCacheFinding(app); found {
@@ -85,6 +99,41 @@ func buildDebugModeFinding(app model.LaravelApp) (model.Finding, bool) {
 	}, true
 }
 
+func buildNonProductionAppEnvFinding(app model.LaravelApp) (model.Finding, bool) {
+	if !app.Environment.AppEnvDefined {
+		return model.Finding{}, false
+	}
+
+	switch strings.ToLower(strings.TrimSpace(app.Environment.AppEnvValue)) {
+	case "local", "development", "dev":
+	default:
+		return model.Finding{}, false
+	}
+
+	envPath, found := app.PathRecord(".env")
+	if !found || !envPath.Inspected || !envPath.Exists {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(secretsExposureCheckID, "non_production_app_env", app.RootPath),
+		CheckID:     secretsExposureCheckID,
+		Class:       model.FindingClassDirect,
+		Severity:    model.SeverityLow,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "APP_ENV indicates a non-production deployment mode",
+		Why:         "A production server running with APP_ENV set to local or development can keep developer-oriented behavior and weaker operational defaults in place longer than intended.",
+		Remediation: "Set APP_ENV=production for production deployments and verify the effective runtime configuration after config cache rebuilds.",
+		Evidence: []model.Evidence{
+			{Label: "path", Detail: envPath.AbsolutePath},
+			{Label: "env", Detail: "APP_ENV=" + app.Environment.AppEnvValue},
+		},
+		Affected: []model.Target{
+			pathTarget(envPath),
+		},
+	}, true
+}
+
 func buildMissingAppKeyFinding(app model.LaravelApp) (model.Finding, bool) {
 	envPath, found := app.PathRecord(".env")
 	if !found || !envPath.Inspected || !envPath.Exists || app.Environment.AppKeyDefined {
@@ -103,6 +152,31 @@ func buildMissingAppKeyFinding(app model.LaravelApp) (model.Finding, bool) {
 		Evidence: []model.Evidence{
 			{Label: "path", Detail: envPath.AbsolutePath},
 			{Label: "env", Detail: "APP_KEY is not defined"},
+		},
+		Affected: []model.Target{
+			pathTarget(envPath),
+		},
+	}, true
+}
+
+func buildEmptyDatabasePasswordFinding(app model.LaravelApp) (model.Finding, bool) {
+	envPath, found := app.PathRecord(".env")
+	if !found || !envPath.Inspected || !envPath.Exists || !app.Environment.DBPasswordDefined || !app.Environment.DBPasswordEmpty {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(secretsExposureCheckID, "empty_db_password", app.RootPath),
+		CheckID:     secretsExposureCheckID,
+		Class:       model.FindingClassDirect,
+		Severity:    model.SeverityLow,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "DB_PASSWORD is empty in .env",
+		Why:         "An empty database password is sometimes intentional in local development, but on a deployed server it often signals a weak or incomplete database authentication posture.",
+		Remediation: "Set a non-empty database password for deployed environments or document the host-level authentication mechanism that makes an empty password safe.",
+		Evidence: []model.Evidence{
+			{Label: "path", Detail: envPath.AbsolutePath},
+			{Label: "env", Detail: "DB_PASSWORD is empty"},
 		},
 		Affected: []model.Target{
 			pathTarget(envPath),

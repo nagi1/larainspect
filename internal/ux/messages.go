@@ -17,6 +17,7 @@ func Onboarding(config model.AuditConfig) string {
 		"This run never changes files, permissions, services, or firewall state.",
 		fmt.Sprintf("Scope: %s", describeScope(config)),
 		fmt.Sprintf("Output: %s with %s detail", config.Format, config.Verbosity),
+		"Stages: setup -> discovery -> checks -> correlation -> report",
 	}
 
 	if config.Verbosity == model.VerbosityVerbose {
@@ -26,6 +27,9 @@ func Onboarding(config model.AuditConfig) string {
 			fmt.Sprintf("Screen-reader mode: %s", enabledDisabled(config.ScreenReader)),
 			fmt.Sprintf("Worker limit: %d", config.WorkerLimit),
 		)
+		if artifactSummary := describeArtifacts(config); artifactSummary != "" {
+			lines = append(lines, fmt.Sprintf("Artifacts: %s", artifactSummary))
+		}
 	}
 
 	if !config.ScreenReader {
@@ -48,11 +52,15 @@ func Footer(report model.Report, config model.AuditConfig) string {
 		"Recommended next steps",
 		"----------------------",
 		"Review direct findings first, then compromise indicators, then unknowns.",
+		fmt.Sprintf("Exit code for this report: %d.", model.ExitCodeForReport(report)),
 		"Re-run with --verbosity verbose for more operator guidance or --format json for machine-readable output.",
 	}
 
 	if config.Scope == model.ScanScopeAuto && !config.ScreenReader {
 		lines = append(lines, "If you want a narrower future run, use --scope app --app-path /path/to/app.")
+	}
+	if artifactSummary := describeArtifacts(config); artifactSummary != "" {
+		lines = append(lines, fmt.Sprintf("Artifacts written: %s.", artifactSummary))
 	}
 
 	return strings.Join(lines, "\n") + "\n"
@@ -78,4 +86,16 @@ func enabledDisabled(value bool) string {
 	}
 
 	return "disabled"
+}
+
+func describeArtifacts(config model.AuditConfig) string {
+	artifacts := []string{}
+	if path := config.NormalizedReportJSONPath(); path != "" {
+		artifacts = append(artifacts, fmt.Sprintf("json=%s", path))
+	}
+	if path := config.NormalizedReportMarkdownPath(); path != "" {
+		artifacts = append(artifacts, fmt.Sprintf("markdown=%s", path))
+	}
+
+	return strings.Join(artifacts, ", ")
 }

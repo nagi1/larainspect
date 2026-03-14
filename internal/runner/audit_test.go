@@ -3,6 +3,7 @@ package runner_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/nagi1/larainspect/internal/correlators"
 	"github.com/nagi1/larainspect/internal/discovery"
 	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/progress"
 	"github.com/nagi1/larainspect/internal/runner"
 )
 
@@ -110,6 +112,134 @@ func TestAuditorRequiresDiscoveryService(t *testing.T) {
 	}
 }
 
+func TestAuditorPublishesProgressEvents(t *testing.T) {
+	t.Parallel()
+
+	execution, err := runner.NewExecutionContext(model.AuditConfig{}, stubExecutor{})
+	if err != nil {
+		t.Fatalf("NewExecutionContext() error = %v", err)
+	}
+
+	bus := progress.NewBus()
+	events := []progress.Event{}
+	bus.SubscribeAll(func(event progress.Event) {
+		events = append(events, event)
+	})
+
+	_, err = runner.Auditor{
+		Discovery: discovery.NoopService{},
+		Checks: []checks.Check{stubCheck{id: "checks.demo", result: model.CheckResult{
+			Findings: []model.Finding{sampleFinding("checks.demo", model.FindingClassDirect, model.SeverityHigh)},
+			Unknowns: []model.Unknown{{
+				ID:      "checks.demo.unknown",
+				CheckID: "checks.demo",
+				Title:   "Demo unknown",
+				Reason:  "permission denied",
+				Error:   model.ErrorKindPermissionDenied,
+			}},
+		}}},
+		Correlators: []correlators.Correlator{stubCorrelator{id: "correlation.demo"}},
+		ProgressBus: bus,
+	}.Run(context.Background(), execution)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	eventTypes := []progress.EventType{}
+	for _, event := range events {
+		eventTypes = append(eventTypes, event.Type)
+	}
+
+	for _, want := range []progress.EventType{
+		progress.EventStageStarted,
+		progress.EventStageCompleted,
+		progress.EventContextResolved,
+		progress.EventCheckRegistered,
+		progress.EventCheckStarted,
+		progress.EventFindingDiscovered,
+		progress.EventUnknownObserved,
+		progress.EventCheckCompleted,
+		progress.EventCorrelatorRegistered,
+		progress.EventCorrelatorStarted,
+		progress.EventCorrelatorCompleted,
+	} {
+		if !slices.Contains(eventTypes, want) {
+			t.Fatalf("expected progress event %q in %+v", want, eventTypes)
+		}
+	}
+
+	checkStarted := findEvent(events, progress.EventCheckStarted)
+	checkCompleted := findEvent(events, progress.EventCheckCompleted)
+	checkRegistered := findEvent(events, progress.EventCheckRegistered)
+	correlatorRegistered := findEvent(events, progress.EventCorrelatorRegistered)
+	correlatorCompleted := findEvent(events, progress.EventCorrelatorCompleted)
+	contextResolved := findEvent(events, progress.EventContextResolved)
+
+	if checkRegistered.Total != 1 || checkRegistered.ComponentID != "checks.demo" {
+		t.Fatalf("unexpected check registration %+v", checkRegistered)
+	}
+	if checkRegistered.Message != "stub check" {
+		t.Fatalf("unexpected check registration description %+v", checkRegistered)
+	}
+	if checkStarted.Total != 1 || checkStarted.Completed != 0 {
+		t.Fatalf("unexpected check start progress %+v", checkStarted)
+	}
+	if checkCompleted.Total != 1 || checkCompleted.Completed != 1 {
+		t.Fatalf("unexpected check completion progress %+v", checkCompleted)
+	}
+	if correlatorRegistered.Total != 1 || correlatorRegistered.ComponentID != "correlation.demo" {
+		t.Fatalf("unexpected correlator registration %+v", correlatorRegistered)
+	}
+	if correlatorRegistered.Message != "stub correlator" {
+		t.Fatalf("unexpected correlator registration description %+v", correlatorRegistered)
+	}
+	if correlatorCompleted.Total != 1 || correlatorCompleted.Completed != 1 {
+		t.Fatalf("unexpected correlator completion progress %+v", correlatorCompleted)
+	}
+	if contextResolved.AppCount != 0 || contextResolved.NginxSites != 0 || contextResolved.PHPFPMPools != 0 || contextResolved.Listeners != 0 {
+		t.Fatalf("unexpected context resolved event %+v", contextResolved)
+	}
+
+	findingDiscovered := findEvent(events, progress.EventFindingDiscovered)
+	unknownObserved := findEvent(events, progress.EventUnknownObserved)
+	if findingDiscovered.Severity != model.SeverityHigh || findingDiscovered.Class != model.FindingClassDirect || findingDiscovered.Title != "Demo finding" {
+		t.Fatalf("unexpected finding discovered event %+v", findingDiscovered)
+	}
+	if unknownObserved.ErrorKind != model.ErrorKindPermissionDenied || unknownObserved.Title != "Demo unknown" {
+		t.Fatalf("unexpected unknown observed event %+v", unknownObserved)
+	}
+}
+
+func TestStageForError(t *testing.T) {
+	t.Parallel()
+
+	if got := runner.StageForError(runner.AuditStageError{Stage: progress.StageDiscovery, Err: errors.New("boom")}); got != progress.StageDiscovery {
+		t.Fatalf("StageForError() = %q", got)
+	}
+
+	if got := runner.StageForError(errors.New("plain")); got != progress.StageReport {
+		t.Fatalf("StageForError() default = %q", got)
+	}
+}
+
+func TestAuditStageErrorErrorAndUnwrap(t *testing.T) {
+	t.Parallel()
+
+	var empty runner.AuditStageError
+	if empty.Error() != "" {
+		t.Fatalf("expected empty error string, got %q", empty.Error())
+	}
+
+	inner := errors.New("boom")
+	stageErr := runner.AuditStageError{Stage: progress.StageChecks, Err: inner}
+	if stageErr.Error() != "boom" {
+		t.Fatalf("Error() = %q", stageErr.Error())
+	}
+	if !errors.Is(stageErr.Unwrap(), inner) {
+		t.Fatalf("expected unwrap to return inner error, got %v", stageErr.Unwrap())
+	}
+}
+
 type stubExecutor struct{}
 
 func (stubExecutor) Run(context.Context, model.CommandRequest) (model.CommandResult, error) {
@@ -131,6 +261,10 @@ func (check stubCheck) ID() string {
 	return check.id
 }
 
+func (check stubCheck) Description() string {
+	return "stub check"
+}
+
 func (check stubCheck) Run(context.Context, model.ExecutionContext, model.Snapshot) (model.CheckResult, error) {
 	return check.result, check.err
 }
@@ -143,6 +277,10 @@ type stubCorrelator struct {
 
 func (correlator stubCorrelator) ID() string {
 	return correlator.id
+}
+
+func (correlator stubCorrelator) Description() string {
+	return "stub correlator"
 }
 
 func (correlator stubCorrelator) Correlate(context.Context, model.ExecutionContext, model.Snapshot, []model.Finding) (model.CheckResult, error) {
@@ -163,4 +301,14 @@ func sampleFinding(checkID string, class model.FindingClass, severity model.Seve
 			{Label: "demo", Detail: "evidence"},
 		},
 	}
+}
+
+func findEvent(events []progress.Event, eventType progress.EventType) progress.Event {
+	for _, event := range events {
+		if event.Type == eventType {
+			return event
+		}
+	}
+
+	return progress.Event{}
 }

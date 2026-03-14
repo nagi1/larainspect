@@ -1,0 +1,211 @@
+rules:
+  - id: laravel.config.app.debug_true
+    title: config/app.php hardcodes debug mode on
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Hardcoding Laravel debug mode on keeps verbose error output enabled regardless of
+      environment settings and can expose stack traces, secrets, and internal paths.
+    remediation: >-
+      Read the debug flag from environment or runtime config and keep production debug
+      output disabled.
+    patterns:
+      - type: regex
+        target: config/app.php
+        detail: hardcodes debug mode to true in config/app.php
+        pattern: >-
+          (?m)['"]debug['"]\s*=>\s*true\b
+
+  - id: laravel.config.auth.password_reset_expire_long
+    title: config/auth.php uses a long password reset expiry
+    severity: low
+    confidence: possible
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Long-lived password reset tokens widen the window for reuse when reset links are
+      exposed, forwarded, or left in mailboxes.
+    remediation: >-
+      Reduce the password reset expiry to the shortest practical window for the
+      application and review whether stale reset tokens are invalidated aggressively
+      enough.
+    patterns:
+      - type: regex
+        target: config/auth.php
+        detail: uses a long password reset expiry in config/auth.php
+        pattern: >-
+          (?m)['"]expire['"]\s*=>\s*[1-9]\d{2,}\b
+
+  - id: laravel.config.session.http_only_false
+    title: config/session.php disables HttpOnly session cookies
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Disabling the HttpOnly flag makes Laravel session cookies readable from JavaScript,
+      which raises the impact of any XSS exposure materially.
+    remediation: >-
+      Enable HttpOnly for session cookies and confirm custom cookie code does not
+      reintroduce script-readable session state elsewhere.
+    patterns:
+      - type: regex
+        target: config/session.php
+        detail: disables the HttpOnly flag for session cookies
+        pattern: >-
+          (?m)['"]http_only['"]\s*=>\s*false\b
+
+  - id: laravel.config.session.same_site_none
+    title: config/session.php permits cross-site session cookies
+    severity: medium
+    confidence: probable
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Using SameSite none or null allows session cookies to accompany cross-site requests
+      more broadly and weakens default CSRF containment.
+    remediation: >-
+      Prefer a SameSite value of lax or strict unless a specific cross-site session flow
+      is required and separately protected.
+    patterns:
+      - type: regex
+        target: config/session.php
+        detail: sets the session cookie SameSite policy to none or null
+        pattern: >-
+          (?m)['"]same_site['"]\s*=>\s*(?:['"]none['"]|null)\b
+
+  - id: laravel.config.cors.wildcard_origins
+    title: config/cors.php allows wildcard origins
+    severity: medium
+    confidence: probable
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Wildcard CORS origins let arbitrary sites read responses from browser-initiated
+      requests when the rest of the policy permits it, which expands cross-origin data
+      exposure risk.
+    remediation: >-
+      Replace wildcard origins with the exact frontend origins that should be allowed
+      to call the application.
+    patterns:
+      - type: regex
+        target: config/cors.php
+        detail: allows wildcard CORS origins
+        pattern: >-
+          (?m)['"]allowed_origins['"]\s*=>\s*\[\s*['"]\*['"]\s*\]
+
+  - id: laravel.config.cors.supports_credentials_true
+    title: config/cors.php enables credentials support
+    severity: medium
+    confidence: probable
+    class: heuristic_finding
+    category: configuration
+    enabled: true
+    why: >-
+      Credentialed cross-origin requests paired with permissive origins can expose
+      authenticated application responses to untrusted sites.
+    remediation: >-
+      Do not allow credentials for wildcard origins. Restrict origins to the exact
+      trusted frontends that need credentialed browser access.
+    patterns:
+      - type: regex
+        target: config/cors.php
+        detail: enables CORS credentials support
+        pattern: >-
+          (?m)['"]supports_credentials['"]\s*=>\s*true\b
+
+  - id: laravel.config.mail.hardcoded_password
+    title: config/mail.php hardcodes a mail credential
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: secrets
+    enabled: true
+    why: >-
+      Hardcoded mail credentials are easy to leak through source access, backups, or
+      config cache artifacts and are harder to rotate safely than environment-managed
+      secrets.
+    remediation: >-
+      Move mail credentials to the deploy-time secret source used for this environment
+      and keep config files free of embedded passwords.
+    patterns:
+      - type: regex
+        target: config/mail.php
+        detail: hardcodes a mail password in config/mail.php
+        exclude_pattern: >-
+          env\(|config\(
+        pattern: >-
+          (?m)['"]password['"]\s*=>\s*['"][^'"]{4,}['"]
+
+  - id: laravel.config.database.hardcoded_password
+    title: config/database.php hardcodes a database credential
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: secrets
+    enabled: true
+    why: >-
+      Embedding database credentials in Laravel config makes them available anywhere
+      the source tree or cached config is exposed and complicates secret rotation.
+    remediation: >-
+      Keep database credentials in the environment or secret distribution mechanism
+      used by the deployment, not in versioned config.
+    patterns:
+      - type: regex
+        target: config/database.php
+        detail: hardcodes a database password in config/database.php
+        exclude_pattern: >-
+          env\(|config\(
+        pattern: >-
+          (?m)['"]password['"]\s*=>\s*['"][^'"]{4,}['"]
+
+  - id: laravel.config.broadcasting.hardcoded_secret
+    title: config/broadcasting.php hardcodes a service credential
+    severity: medium
+    confidence: probable
+    class: heuristic_finding
+    category: secrets
+    enabled: true
+    why: >-
+      Hardcoded broadcasting secrets expand the blast radius of repository, backup,
+      and config-cache exposure and are awkward to rotate under incident pressure.
+    remediation: >-
+      Read broadcasting keys and secrets from deployment-managed secrets instead of
+      embedding them in config.
+    patterns:
+      - type: regex
+        target: config/broadcasting.php
+        detail: hardcodes a broadcasting credential in config/broadcasting.php
+        exclude_pattern: >-
+          env\(|config\(
+        pattern: >-
+          (?m)['"](secret|key)['"]\s*=>\s*['"][A-Za-z0-9][^'"]{9,}['"]
+
+  - id: laravel.config.logging.hardcoded_slack_webhook
+    title: config/logging.php hardcodes a Slack webhook
+    severity: medium
+    confidence: probable
+    class: heuristic_finding
+    category: secrets
+    enabled: true
+    why: >-
+      Slack webhooks behave like bearer-style credentials. Embedding one in config makes
+      it easier to leak and abuse for message spoofing or alert noise.
+    remediation: >-
+      Store Slack webhook URLs in the environment or secret manager used by the
+      deployment and rotate any webhook that has been committed or deployed broadly.
+    patterns:
+      - type: regex
+        target: config/logging.php
+        detail: hardcodes a Slack webhook in config/logging.php
+        exclude_pattern: >-
+          env\(|config\(
+        pattern: >-
+          (?m)hooks\.slack\.com/services

@@ -1,0 +1,79 @@
+# larainspect configuration
+# Copy this file to larainspect.yaml in your project root, or to
+# /etc/larainspect/config.yaml for system-wide use.
+#
+# Only set values that differ from the defaults. Everything is optional.
+
+version: 1
+
+# Server identity — helps group audit results.
+server:
+  name: laravel-production
+  os: ubuntu  # ubuntu | fedora | rhel | centos | rocky | almalinux | custom
+
+# What and where to scan.
+laravel:
+  scope: auto        # auto | host | app
+  app_path: /var/www/laravel/current
+  scan_roots:
+    - /var/www
+    - /srv/www
+
+# Service config discovery. Leave paths empty to use built-in defaults.
+# If larainspect reports that a binary was not found on PATH, set the exact
+# full path here rather than disabling the service check.
+services:
+  use_default_paths: true
+  nginx:
+    enabled: true
+    # Set this when nginx lives outside PATH, e.g. aaPanel:
+    # binary: /www/server/nginx/sbin/nginx
+    paths:
+      - "/etc/nginx/sites-enabled/*"
+  php_fpm:
+    enabled: true
+    # Set these when php-fpm binaries live outside PATH.
+    # Versioned names such as php-fpm83 are common on aaPanel hosts:
+    # binaries:
+    #   - /www/server/php/83/sbin/php-fpm
+    #   - /www/server/php/85/sbin/php-fpm
+    paths:
+      - "/etc/php/*/fpm/pool.d/*.conf"
+  supervisor:
+    enabled: true
+    # binary: /usr/bin/supervisord
+    paths:
+      - "/etc/supervisor/conf.d/*.conf"
+  systemd:
+    enabled: true
+    paths:
+      - "/etc/systemd/system/*.service"
+
+# Output preferences.
+output:
+  format: terminal   # terminal | json | markdown
+  verbosity: normal  # quiet | normal | verbose
+  interactive: false
+  color: auto        # auto | always | never
+  screen_reader: false
+
+# Tuning knobs — the defaults are sensible for most hosts.
+advanced:
+  command_timeout: 2s
+  max_output_bytes: 65536
+  worker_limit: 4
+
+# Rule engine configuration.
+rules:
+  # Restrict the scan to only these rule IDs (empty = all enabled).
+  enable: []
+  # Exclude specific rule IDs from every scan.
+  disable: []
+  # Additional directories containing custom .yaml rule files.
+  custom_dirs: []
+  # Per-rule overrides for severity, confidence, or enabled state.
+  # override:
+  #   laravel.debug.dd_call:
+  #     severity: low
+  #     confidence: probable
+  #     enabled: false

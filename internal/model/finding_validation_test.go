@@ -65,6 +65,29 @@ func TestUnknownValidateRejectsInvalidFields(t *testing.T) {
 	}
 }
 
+func TestSeverityWeightCoversAllLevels(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		severity model.Severity
+		want     int
+	}{
+		{model.SeverityCritical, 5},
+		{model.SeverityHigh, 4},
+		{model.SeverityMedium, 3},
+		{model.SeverityLow, 2},
+		{model.SeverityInformational, 1},
+		{model.Severity("unknown"), 0},
+		{model.Severity(""), 0},
+	}
+
+	for _, tc := range cases {
+		if got := tc.severity.Weight(); got != tc.want {
+			t.Errorf("Severity(%q).Weight() = %d, want %d", tc.severity, got, tc.want)
+		}
+	}
+}
+
 func TestBuildReportRejectsInvalidPayloads(t *testing.T) {
 	t.Parallel()
 

@@ -101,3 +101,79 @@ func TestBuildReportCountsCompromiseIndicatorsAndRejectsInvalidFinding(t *testin
 		t.Fatal("expected invalid finding error")
 	}
 }
+
+func TestReportFindingsAndRebuildReport(t *testing.T) {
+	t.Parallel()
+
+	findings := []model.Finding{
+		{
+			ID:          "direct.demo",
+			CheckID:     "direct.demo",
+			Class:       model.FindingClassDirect,
+			Severity:    model.SeverityHigh,
+			Confidence:  model.ConfidenceConfirmed,
+			Title:       "Direct finding",
+			Why:         "demo",
+			Remediation: "fix demo",
+			Evidence:    []model.Evidence{{Label: "demo", Detail: "one"}},
+		},
+		{
+			ID:          "heuristic.demo",
+			CheckID:     "heuristic.demo",
+			Class:       model.FindingClassHeuristic,
+			Severity:    model.SeverityLow,
+			Confidence:  model.ConfidencePossible,
+			Title:       "Heuristic finding",
+			Why:         "demo",
+			Remediation: "fix demo",
+			Evidence:    []model.Evidence{{Label: "demo", Detail: "two"}},
+		},
+	}
+
+	report, err := model.BuildReport(model.Host{Hostname: "demo-vps"}, time.Unix(1700000000, 0), 1500*time.Millisecond, findings, nil)
+	if err != nil {
+		t.Fatalf("BuildReport() error = %v", err)
+	}
+
+	flattenedFindings := report.Findings()
+	if len(flattenedFindings) != 2 {
+		t.Fatalf("expected 2 flattened findings, got %d", len(flattenedFindings))
+	}
+
+	rebuiltReport, err := model.RebuildReport(report, flattenedFindings[:1], report.Unknowns)
+	if err != nil {
+		t.Fatalf("RebuildReport() error = %v", err)
+	}
+
+	if rebuiltReport.GeneratedAt != report.GeneratedAt || rebuiltReport.Duration != report.Duration {
+		t.Fatalf("expected rebuilt report metadata to match original, got %+v", rebuiltReport)
+	}
+	if rebuiltReport.Summary.TotalFindings != 1 || rebuiltReport.Summary.DirectFindings != 1 || rebuiltReport.Summary.HeuristicFindings != 0 {
+		t.Fatalf("unexpected rebuilt summary %+v", rebuiltReport.Summary)
+	}
+}
+
+func TestFindingFingerprintIsStableAcrossWordingChanges(t *testing.T) {
+	t.Parallel()
+
+	firstFinding := model.Finding{
+		ID:          "demo.finding",
+		CheckID:     "demo.check",
+		Class:       model.FindingClassDirect,
+		Severity:    model.SeverityHigh,
+		Confidence:  model.ConfidenceConfirmed,
+		Title:       "First title",
+		Why:         "First why",
+		Remediation: "First remediation",
+		Evidence:    []model.Evidence{{Label: "demo", Detail: "value"}},
+		Affected:    []model.Target{{Type: "path", Path: "/srv/www/.env"}},
+	}
+	secondFinding := firstFinding
+	secondFinding.Title = "Second title"
+	secondFinding.Why = "Second why"
+	secondFinding.Remediation = "Second remediation"
+
+	if firstFinding.Fingerprint() != secondFinding.Fingerprint() {
+		t.Fatalf("expected wording-only changes to preserve fingerprint: %q vs %q", firstFinding.Fingerprint(), secondFinding.Fingerprint())
+	}
+}

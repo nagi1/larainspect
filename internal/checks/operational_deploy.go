@@ -9,6 +9,8 @@ import (
 
 const operationalDeployCheckID = "operations.deploy"
 
+var _ Check = OperationalDeployCheck{}
+
 type OperationalDeployCheck struct{}
 
 func init() {
@@ -19,10 +21,19 @@ func (OperationalDeployCheck) ID() string {
 	return operationalDeployCheckID
 }
 
-func (OperationalDeployCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
+func (OperationalDeployCheck) Description() string {
+	return "Inspect deployment artifacts and release hygiene risks."
+}
+
+func (OperationalDeployCheck) Run(_ context.Context, execution model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
+	hostScope := execution.Config.Scope == model.ScanScopeHost
 
 	for _, app := range snapshot.Apps {
+		if hostScope {
+			findings = append(findings, collectReleaseLayoutFindings(app)...)
+		}
+
 		for _, artifact := range app.Artifacts {
 			if artifact.Kind != model.ArtifactKindVersionControlPath {
 				continue
@@ -135,7 +146,36 @@ func (OperationalDeployCheck) Run(_ context.Context, _ model.ExecutionContext, s
 				},
 			})
 		}
+
+		if finding, found := buildPostDeployDriftFinding(app, snapshot); found {
+			findings = append(findings, finding)
+		}
+		if finding, found := buildPostRestoreDriftFinding(app, snapshot); found {
+			findings = append(findings, finding)
+		}
 	}
 
 	return model.CheckResult{Findings: findings}, nil
+}
+
+func collectReleaseLayoutFindings(app model.LaravelApp) []model.Finding {
+	if app.Deployment.UsesReleaseLayout {
+		return nil
+	}
+
+	return []model.Finding{{
+		ID:          buildFindingID(operationalDeployCheckID, "mutable_live_tree", app.RootPath),
+		CheckID:     operationalDeployCheckID,
+		Class:       model.FindingClassHeuristic,
+		Severity:    model.SeverityMedium,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "Deployment appears to mutate one live app tree in place",
+		Why:         "In-place deploys make rollback, immutability, and permission-drift control harder than a release-based current-plus-releases model.",
+		Remediation: "Prefer a release-based deployment layout with immutable releases, a current symlink switch, and shared writable paths kept outside release code.",
+		Evidence: []model.Evidence{
+			{Label: "app_root", Detail: app.RootPath},
+			{Label: "deployment_model", Detail: "in_place_or_not_detected_as_release_based"},
+		},
+		Affected: []model.Target{appTarget(app)},
+	}}
 }

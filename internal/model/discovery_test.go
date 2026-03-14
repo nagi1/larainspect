@@ -56,9 +56,24 @@ func TestPathRecordHelpers(t *testing.T) {
 	if !record.IsWorldReadable() {
 		t.Fatal("expected world-readable permissions")
 	}
+	if !record.IsOwnerWritable() {
+		t.Fatal("expected owner write helper to reflect 0644 permissions")
+	}
+	if record.IsGroupWritable() {
+		t.Fatal("expected group write helper to reflect 0644 permissions")
+	}
 
 	if got := record.ModeOctal(); got != "0644" {
 		t.Fatalf("ModeOctal() = %q, want 0644", got)
+	}
+
+	writableRecord := model.PathRecord{
+		Inspected:   true,
+		Exists:      true,
+		Permissions: 0o660,
+	}
+	if !writableRecord.IsOwnerWritable() || !writableRecord.IsGroupWritable() {
+		t.Fatalf("expected writable helpers for 0660, got %+v", writableRecord)
 	}
 
 	directoryRecord := model.PathRecord{
@@ -202,5 +217,43 @@ func TestLaravelAppPathRecordLookup(t *testing.T) {
 
 	if pathRecord, found := app.PathRecord(".env"); !found || pathRecord.RelativePath != ".env" {
 		t.Fatalf("unexpected PathRecord() result: %+v found=%v", pathRecord, found)
+	}
+}
+
+func TestLaravelAppDisplayAndVersionHelpers(t *testing.T) {
+	t.Parallel()
+
+	namedApp := model.LaravelApp{
+		AppName:        "acme/shop",
+		LaravelVersion: "v11.9.0",
+		Packages: []model.PackageRecord{
+			{Name: "laravel/framework", Version: "v11.8.0"},
+		},
+	}
+	if got := namedApp.DisplayName(); got != "acme/shop" {
+		t.Fatalf("DisplayName() = %q", got)
+	}
+	if got := namedApp.PackageVersion("laravel/framework"); got != "v11.8.0" {
+		t.Fatalf("PackageVersion() = %q", got)
+	}
+	if got := namedApp.EffectiveLaravelVersion(); got != "v11.9.0" {
+		t.Fatalf("EffectiveLaravelVersion() = %q", got)
+	}
+
+	pathApp := model.LaravelApp{
+		ResolvedPath: "/srv/www/current",
+		RootPath:     "/srv/www/shop",
+		Packages: []model.PackageRecord{
+			{Name: "laravel/framework", Version: "v11.7.0"},
+		},
+	}
+	if got := pathApp.DisplayName(); got != "current" {
+		t.Fatalf("DisplayName() path fallback = %q", got)
+	}
+	if got := pathApp.EffectiveLaravelVersion(); got != "v11.7.0" {
+		t.Fatalf("EffectiveLaravelVersion() fallback = %q", got)
+	}
+	if got := (model.LaravelApp{}).DisplayName(); got != "unknown" {
+		t.Fatalf("DisplayName() zero app = %q", got)
 	}
 }

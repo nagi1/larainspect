@@ -56,6 +56,17 @@ func parseNginxSites(configPath string, contents string) ([]model.NginxSite, err
 		site.HiddenDenyMatchers = slices.Compact(site.HiddenDenyMatchers)
 		site.SensitiveDenyMatchers = slices.Compact(site.SensitiveDenyMatchers)
 		site.UploadExecutionMatchers = slices.Compact(site.UploadExecutionMatchers)
+		if site.Root == "" &&
+			len(site.ServerNames) == 0 &&
+			len(site.IndexFiles) == 0 &&
+			len(site.FastCGIPassTargets) == 0 &&
+			len(site.GenericPHPLocations) == 0 &&
+			len(site.FrontControllerPaths) == 0 &&
+			len(site.HiddenDenyMatchers) == 0 &&
+			len(site.SensitiveDenyMatchers) == 0 &&
+			len(site.UploadExecutionMatchers) == 0 {
+			continue
+		}
 		sites = append(sites, site)
 	}
 
@@ -261,7 +272,27 @@ func matcherAllowsGenericPHPExecution(matcher string) bool {
 		return false
 	}
 
-	return strings.Contains(normalizedMatcher, ".php") || strings.Contains(normalizedMatcher, `php$`)
+	return containsExecutablePHPMatcher(normalizedMatcher)
+}
+
+func containsExecutablePHPMatcher(matcher string) bool {
+	for _, token := range []string{
+		".php", "php$", "php|", "php)",
+		".phtml", "phtml$", "phtml|", "phtml)",
+		".pht", "pht$", "pht|", "pht)",
+		".phar", "phar$", "phar|", "phar)",
+		".php3", "php3$", "php3|", "php3)",
+		".php4", "php4$", "php4|", "php4)",
+		".php5", "php5$", "php5|", "php5)",
+		".php7", "php7$", "php7|", "php7)",
+		".php8", "php8$", "php8|", "php8)",
+	} {
+		if strings.Contains(matcher, token) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func matcherTargetsFrontControllerOnly(matcher string) bool {

@@ -16,6 +16,10 @@ func (check testCheck) ID() string {
 	return check.id
 }
 
+func (check testCheck) Description() string {
+	return "test check"
+}
+
 func (check testCheck) Run(context.Context, model.ExecutionContext, model.Snapshot) (model.CheckResult, error) {
 	return model.CheckResult{}, nil
 }
@@ -47,5 +51,23 @@ func TestRegistryReturnsChecksInStableOrder(t *testing.T) {
 
 	if registered[0].ID() != "alpha" || registered[1].ID() != "zeta" {
 		t.Fatalf("unexpected check order: %s, %s", registered[0].ID(), registered[1].ID())
+	}
+}
+
+func TestRegisteredChecksExposeDescriptions(t *testing.T) {
+	t.Parallel()
+
+	registered := checks.Registered()
+	if len(registered) == 0 {
+		t.Fatal("expected built-in checks to be registered")
+	}
+
+	for _, check := range registered {
+		if check.ID() == "" {
+			t.Fatalf("expected check ID, got %+v", check)
+		}
+		if check.Description() == "" {
+			t.Fatalf("expected description for check %q", check.ID())
+		}
 	}
 }

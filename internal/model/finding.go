@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,6 +27,25 @@ func (severity Severity) Valid() bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// Weight returns a numeric weight for sorting where higher means more severe.
+// Unknown severities return 0.
+func (severity Severity) Weight() int {
+	switch severity {
+	case SeverityCritical:
+		return 5
+	case SeverityHigh:
+		return 4
+	case SeverityMedium:
+		return 3
+	case SeverityLow:
+		return 2
+	case SeverityInformational:
+		return 1
+	default:
+		return 0
 	}
 }
 
@@ -135,6 +155,30 @@ func (finding Finding) Validate() error {
 	}
 }
 
+// Fingerprint returns a stable identity hash for baseline and dedup use.
+// Based on check_id + class + finding id + first affected target.
+// Wording changes to title/why/remediation do not alter the fingerprint.
+func (finding Finding) Fingerprint() string {
+	h := sha256.New()
+	h.Write([]byte(finding.CheckID))
+	h.Write([]byte{':'})
+	h.Write([]byte(finding.Class))
+	h.Write([]byte{':'})
+	h.Write([]byte(finding.ID))
+	if len(finding.Affected) > 0 {
+		h.Write([]byte{':'})
+		t := finding.Affected[0]
+		if t.Path != "" {
+			h.Write([]byte(t.Path))
+		} else if t.Name != "" {
+			h.Write([]byte(t.Name))
+		} else if t.Value != "" {
+			h.Write([]byte(t.Value))
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+}
+
 type Unknown struct {
 	ID       string     `json:"id"`
 	CheckID  string     `json:"check_id"`
@@ -193,8 +237,10 @@ type Snapshot struct {
 	CronEntries           []CronEntry            `json:"cron_entries,omitempty"`
 	Listeners             []ListenerRecord       `json:"listeners,omitempty"`
 	SSHConfigs            []SSHConfig            `json:"ssh_configs,omitempty"`
+	SSHAccounts           []SSHAccount           `json:"ssh_accounts,omitempty"`
 	SudoRules             []SudoRule             `json:"sudo_rules,omitempty"`
 	FirewallSummaries     []FirewallSummary      `json:"firewall_summaries,omitempty"`
+	RuleDefinitions       map[string]RuleDefinition `json:"-"`
 }
 
 type Report struct {
@@ -263,25 +309,57 @@ func BuildReport(host Host, generatedAt time.Time, duration time.Duration, findi
 	return report, nil
 }
 
+func (report Report) Findings() []Finding {
+	findings := make([]Finding, 0, report.Summary.TotalFindings)
+	findings = append(findings, report.DirectFindings...)
+	findings = append(findings, report.HeuristicFindings...)
+	findings = append(findings, report.CompromiseIndicators...)
+	return findings
+}
+
+func RebuildReport(report Report, findings []Finding, unknowns []Unknown) (Report, error) {
+	duration, err := time.ParseDuration(report.Duration)
+	if err != nil {
+		return Report{}, fmt.Errorf("parse report duration %q: %w", report.Duration, err)
+	}
+
+	rebuiltReport, err := BuildReport(report.Host, report.GeneratedAt, duration, findings, unknowns)
+	if err != nil {
+		return Report{}, err
+	}
+
+	return rebuiltReport, nil
+}
+
 type CheckResult struct {
 	Findings []Finding
 	Unknowns []Unknown
 }
 
 type AuditConfig struct {
-	Format         string
-	CommandTimeout time.Duration
-	MaxOutputBytes int
-	WorkerLimit    int
-	ConfigPath     string
-	Verbosity      Verbosity
-	Scope          ScanScope
-	Interactive    bool
-	AppPath        string
-	ScanRoots      []string
-	ColorMode      ColorMode
-	ScreenReader   bool
-	Profile        HostProfile
+	Format             string
+	ReportJSONPath     string
+	ReportMarkdownPath string
+	ReportSARIFPath    string
+	ReportHTMLPath     string
+	DebugLogPath       string
+	BaselinePath       string
+	UpdateBaselinePath string
+	StoreDir           string
+	CommandTimeout     time.Duration
+	MaxOutputBytes     int
+	WorkerLimit        int
+	ConfigPath         string
+	Verbosity          Verbosity
+	Scope              ScanScope
+	Interactive        bool
+	AppPath            string
+	ScanRoots          []string
+	ColorMode          ColorMode
+	ScreenReader       bool
+	Profile            HostProfile
+	Rules              RuleConfig
+	VulnCheck          bool
 }
 
 type CommandRequest struct {

@@ -45,3 +45,13 @@ func ExitCodeForReport(report Report) ExitCode {
 		return ExitCodeClean
 	}
 }
+
+func (report Report) HighestSeverityOrClean() string {
+	if severity := report.HighestSeverity(); severity != "" {
+		return string(severity)
+	}
+	if report.Summary.Unknowns > 0 {
+		return "unknown-only"
+	}
+	return "clean"
+}

@@ -235,6 +235,146 @@ func TestOperationalDeployCheckReportsVersionControlComposerAndDangerousPermissi
 	}
 }
 
+func TestOperationalDeployCheckReportsMutableLiveTreeDeployment(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	app.Deployment = model.DeploymentInfo{CurrentPath: app.RootPath}
+
+	result, err := checks.OperationalDeployCheck{}.Run(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{Scope: model.ScanScopeHost},
+	}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", result.Findings)
+	}
+
+	finding := result.Findings[0]
+	if finding.ID == "" || finding.Class != model.FindingClassHeuristic || finding.Severity != model.SeverityMedium {
+		t.Fatalf("unexpected finding %+v", finding)
+	}
+}
+
+func TestOperationalDeployCheckCorrelatesPostDeployDrift(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	app.RootRecord.OwnerName = "www-data"
+	setPathRecord(&app, "app", model.PathKindDirectory, 0o770)
+	setPathOwnership(&app, "app", "deploy", "www-data")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	setPathOwnership(&app, "public/storage", "deploy", "www-data")
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+		app.KeyPaths[index].ResolvedPath = "/srv/unexpected-storage"
+	}
+	app.Deployment = model.DeploymentInfo{
+		UsesReleaseLayout: true,
+		CurrentPath:       app.RootPath,
+		ReleaseRoot:       "/var/www/shop/releases",
+		SharedPath:        "/var/www/shop/shared",
+		PreviousReleases: []model.PathRecord{{
+			RelativePath: "20260310",
+			AbsolutePath: "/var/www/shop/releases/20260310",
+			PathKind:     model.PathKindDirectory,
+			TargetKind:   model.PathKindDirectory,
+			Inspected:    true,
+			Exists:       true,
+			Permissions:  0o775,
+			OwnerName:    "deploy",
+			GroupName:    "www-data",
+		}},
+	}
+
+	result, err := checks.OperationalDeployCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:         "/etc/nginx/sites-enabled/shop.conf",
+			Root:               "/var/www/shop/current/public",
+			FastCGIPassTargets: []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath: "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:       "shop",
+			User:       "www-data",
+			Group:      "www-data",
+			Listen:     "/run/php/shop.sock",
+			ListenMode: "0660",
+		}},
+		SystemdUnits: []model.SystemdUnit{{
+			Path:             "/etc/systemd/system/deploy.service",
+			Name:             "deploy.service",
+			User:             "deploy",
+			WorkingDirectory: app.RootPath,
+			ExecStart:        "/usr/bin/composer install --no-dev",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if !findingTitleExists(result.Findings, "Post-deploy drift weakens Laravel ownership or writable-path boundaries") {
+		t.Fatalf("expected post-deploy drift finding, got %+v", result.Findings)
+	}
+}
+
+func TestOperationalDeployCheckCorrelatesPostRestoreDrift(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	setPathOwnership(&app, ".env", "www-data", "www-data")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+		app.KeyPaths[index].ResolvedPath = "/tmp/recovered-files"
+	}
+	app.Artifacts = []model.ArtifactRecord{{
+		Kind:             model.ArtifactKindEnvironmentBackup,
+		WithinPublicPath: true,
+		Path:             newArtifactPathRecord("/var/www/shop/current", "public/.env.restore.bak"),
+	}}
+
+	result, err := checks.OperationalDeployCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		SystemdUnits: []model.SystemdUnit{{
+			Path:             "/etc/systemd/system/restore.service",
+			Name:             "restore.service",
+			User:             "deploy",
+			WorkingDirectory: app.RootPath,
+			ExecStart:        "/usr/local/bin/restore-laravel --app /var/www/shop/current",
+		}},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:         "/etc/nginx/sites-enabled/shop.conf",
+			Root:               "/var/www/shop/current/public",
+			FastCGIPassTargets: []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath: "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:       "shop",
+			User:       "www-data",
+			Group:      "www-data",
+			Listen:     "/run/php/shop.sock",
+			ListenMode: "0660",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if !findingTitleExists(result.Findings, "Post-restore drift weakens Laravel ownership, shared-path, or recovery boundaries") {
+		t.Fatalf("expected post-restore drift finding, got %+v", result.Findings)
+	}
+}
+
 func TestOperationalDeployCheckReportsProductionComposerFlagsAndRootRestore(t *testing.T) {
 	t.Parallel()
 
@@ -278,6 +418,31 @@ func TestOperationalDeployCheckReportsProductionComposerFlagsAndRootRestore(t *t
 	}
 }
 
+func TestOperationalDeployCheckIgnoresUnrelatedRootRestoreCommands(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+
+	result, err := checks.OperationalDeployCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		SystemdUnits: []model.SystemdUnit{{
+			Path:      "/lib/systemd/system/nvmet.service",
+			Name:      "nvmet.service",
+			User:      "root",
+			ExecStart: "/usr/sbin/nvmetcli restore",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	for _, finding := range result.Findings {
+		if finding.Title == "Restore or artisan maintenance workflow runs as root" {
+			t.Fatalf("did not expect unrelated restore command to match Laravel workflow, got %+v", result.Findings)
+		}
+	}
+}
+
 func TestOperationalCronCheckReportsDirectArtisanPublicOutputAndRootMaintenance(t *testing.T) {
 	t.Parallel()
 
@@ -306,45 +471,6 @@ func TestOperationalCronCheckReportsDirectArtisanPublicOutputAndRootMaintenance(
 
 	if len(result.Findings) != 5 {
 		t.Fatalf("expected 5 findings, got %+v", result.Findings)
-	}
-}
-
-func TestOperationalHardeningCheckReportsSSHSudoSystemdFirewallAndLogs(t *testing.T) {
-	t.Parallel()
-
-	app := completeLaravelApp("/var/www/shop/current")
-	setPathRecord(&app, "storage/logs", model.PathKindDirectory, 0o755)
-
-	result, err := checks.OperationalHardeningCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
-		Apps: []model.LaravelApp{app},
-		SSHConfigs: []model.SSHConfig{{
-			Path:                   "/etc/ssh/sshd_config",
-			PermitRootLogin:        "yes",
-			PasswordAuthentication: "yes",
-		}},
-		SudoRules: []model.SudoRule{{
-			Path:        "/etc/sudoers.d/deploy",
-			Principal:   "deploy",
-			NoPassword:  true,
-			AllCommands: true,
-		}},
-		SystemdUnits: []model.SystemdUnit{{
-			Path:      "/etc/systemd/system/php-fpm.service",
-			Name:      "php-fpm.service",
-			ExecStart: "/usr/sbin/php-fpm --nodaemonize",
-		}},
-		FirewallSummaries: []model.FirewallSummary{{Source: "ufw", Enabled: false, State: "Status: inactive"}},
-		Listeners: []model.ListenerRecord{{
-			LocalAddress: "0.0.0.0",
-			LocalPort:    "6379",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-
-	if len(result.Findings) != 8 {
-		t.Fatalf("expected 8 findings, got %+v", result.Findings)
 	}
 }
 

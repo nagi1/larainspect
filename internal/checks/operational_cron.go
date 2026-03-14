@@ -9,6 +9,8 @@ import (
 
 const operationalCronCheckID = "operations.cron"
 
+var _ Check = OperationalCronCheck{}
+
 type OperationalCronCheck struct{}
 
 func init() {
@@ -17,6 +19,10 @@ func init() {
 
 func (OperationalCronCheck) ID() string {
 	return operationalCronCheckID
+}
+
+func (OperationalCronCheck) Description() string {
+	return "Inspect cron and scheduler definitions for unsafe Laravel operations."
 }
 
 func (OperationalCronCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {

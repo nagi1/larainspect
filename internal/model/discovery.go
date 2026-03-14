@@ -2,7 +2,8 @@ package model
 
 import (
 	"fmt"
-	"sort"
+	"path/filepath"
+	"strings"
 )
 
 type PackageRecord struct {
@@ -12,26 +13,58 @@ type PackageRecord struct {
 }
 
 type LaravelApp struct {
-	RootPath      string           `json:"root_path"`
-	ResolvedPath  string           `json:"resolved_path,omitempty"`
-	AppName       string           `json:"app_name,omitempty"`
-	MarkerFiles   []string         `json:"marker_files"`
-	Packages      []PackageRecord  `json:"packages,omitempty"`
-	KeyPaths      []PathRecord     `json:"key_paths,omitempty"`
-	Environment   EnvironmentInfo  `json:"environment,omitempty"`
-	Artifacts     []ArtifactRecord `json:"artifacts,omitempty"`
-	SourceMatches []SourceMatch    `json:"source_matches,omitempty"`
-	Deployment    DeploymentInfo   `json:"deployment,omitempty"`
+	RootPath          string            `json:"root_path"`
+	ResolvedPath      string            `json:"resolved_path,omitempty"`
+	AppName           string            `json:"app_name,omitempty"`
+	LaravelVersion    string            `json:"laravel_version,omitempty"`
+	PHPVersion        string            `json:"php_version,omitempty"`
+	MarkerFiles       []string          `json:"marker_files"`
+	Packages          []PackageRecord   `json:"packages,omitempty"`
+	InstalledPackages map[string]string `json:"installed_packages,omitempty"`
+	RootRecord        PathRecord        `json:"root_record,omitempty"`
+	KeyPaths          []PathRecord      `json:"key_paths,omitempty"`
+	Environment       EnvironmentInfo   `json:"environment,omitempty"`
+	Artifacts         []ArtifactRecord  `json:"artifacts,omitempty"`
+	SourceMatches     []SourceMatch     `json:"source_matches,omitempty"`
+	Deployment        DeploymentInfo    `json:"deployment,omitempty"`
 }
 
-func SortPackageRecords(records []PackageRecord) {
-	sort.Slice(records, func(leftIndex int, rightIndex int) bool {
-		if records[leftIndex].Name == records[rightIndex].Name {
-			return records[leftIndex].Source < records[rightIndex].Source
+func (app LaravelApp) DisplayName() string {
+	if trimmedName := strings.TrimSpace(app.AppName); trimmedName != "" {
+		return trimmedName
+	}
+
+	for _, candidatePath := range []string{app.ResolvedPath, app.RootPath} {
+		trimmedPath := strings.TrimSpace(candidatePath)
+		if trimmedPath == "" {
+			continue
 		}
 
-		return records[leftIndex].Name < records[rightIndex].Name
-	})
+		baseName := filepath.Base(trimmedPath)
+		if baseName != "." && baseName != string(filepath.Separator) {
+			return baseName
+		}
+	}
+
+	return "unknown"
+}
+
+func (app LaravelApp) PackageVersion(packageName string) string {
+	for _, packageRecord := range app.Packages {
+		if packageRecord.Name == packageName {
+			return packageRecord.Version
+		}
+	}
+
+	return ""
+}
+
+func (app LaravelApp) EffectiveLaravelVersion() string {
+	if trimmedVersion := strings.TrimSpace(app.LaravelVersion); trimmedVersion != "" {
+		return trimmedVersion
+	}
+
+	return strings.TrimSpace(app.PackageVersion("laravel/framework"))
 }
 
 type PathExpectation struct {
@@ -60,6 +93,8 @@ type PathRecord struct {
 	Permissions  uint32   `json:"permissions,omitempty"`
 	UID          uint32   `json:"uid,omitempty"`
 	GID          uint32   `json:"gid,omitempty"`
+	OwnerName    string   `json:"owner_name,omitempty"`
+	GroupName    string   `json:"group_name,omitempty"`
 }
 
 func (record PathRecord) EffectiveKind() PathKind {
@@ -98,11 +133,23 @@ func (record PathRecord) IsWorldReadable() bool {
 	return record.Inspected && record.Exists && record.Permissions&0o004 != 0
 }
 
+func (record PathRecord) IsOwnerWritable() bool {
+	return record.Inspected && record.Exists && record.Permissions&0o200 != 0
+}
+
+func (record PathRecord) IsGroupWritable() bool {
+	return record.Inspected && record.Exists && record.Permissions&0o020 != 0
+}
+
 type EnvironmentInfo struct {
 	AppDebugDefined            bool   `json:"app_debug_defined,omitempty"`
 	AppDebugValue              string `json:"app_debug_value,omitempty"`
+	AppEnvDefined              bool   `json:"app_env_defined,omitempty"`
+	AppEnvValue                string `json:"app_env_value,omitempty"`
 	AppKeyDefined              bool   `json:"app_key_defined,omitempty"`
 	AppKeyValue                string `json:"app_key_value,omitempty"`
+	DBPasswordDefined          bool   `json:"db_password_defined,omitempty"`
+	DBPasswordEmpty            bool   `json:"db_password_empty,omitempty"`
 	SessionSecureCookieDefined bool   `json:"session_secure_cookie_defined,omitempty"`
 	SessionSecureCookieValue   string `json:"session_secure_cookie_value,omitempty"`
 }
@@ -114,6 +161,7 @@ const (
 	ArtifactKindPublicSensitiveFile ArtifactKind = "public_sensitive_file"
 	ArtifactKindPublicPHPFile       ArtifactKind = "public_php_file"
 	ArtifactKindPublicAdminTool     ArtifactKind = "public_admin_tool"
+	ArtifactKindPublicSymlink       ArtifactKind = "public_symlink"
 	ArtifactKindVersionControlPath  ArtifactKind = "version_control_path"
 	ArtifactKindWritablePHPFile     ArtifactKind = "writable_php_file"
 	ArtifactKindWritableSymlink     ArtifactKind = "writable_symlink"
@@ -223,6 +271,14 @@ type SSHConfig struct {
 	PasswordAuthentication string `json:"password_authentication,omitempty"`
 }
 
+type SSHAccount struct {
+	User           string       `json:"user"`
+	HomePath       string       `json:"home_path,omitempty"`
+	SSHDir         PathRecord   `json:"ssh_dir,omitempty"`
+	AuthorizedKeys PathRecord   `json:"authorized_keys,omitempty"`
+	PrivateKeys    []PathRecord `json:"private_keys,omitempty"`
+}
+
 type SudoRule struct {
 	Path        string   `json:"path"`
 	Principal   string   `json:"principal"`
@@ -259,136 +315,6 @@ func CoreLaravelPathExpectations() []PathExpectation {
 		{RelativePath: "composer.lock", Kind: PathKindFile, Required: true},
 		{RelativePath: ".env", Kind: PathKindFile, Required: false},
 	}
-}
-
-func SortPathRecords(records []PathRecord) {
-	sort.Slice(records, func(leftIndex int, rightIndex int) bool {
-		return records[leftIndex].RelativePath < records[rightIndex].RelativePath
-	})
-}
-
-func SortArtifactRecords(records []ArtifactRecord) {
-	sort.Slice(records, func(leftIndex int, rightIndex int) bool {
-		return records[leftIndex].Path.RelativePath < records[rightIndex].Path.RelativePath
-	})
-}
-
-func SortSourceMatches(matches []SourceMatch) {
-	sort.Slice(matches, func(leftIndex int, rightIndex int) bool {
-		leftMatch := matches[leftIndex]
-		rightMatch := matches[rightIndex]
-
-		switch {
-		case leftMatch.RelativePath != rightMatch.RelativePath:
-			return leftMatch.RelativePath < rightMatch.RelativePath
-		case leftMatch.Line != rightMatch.Line:
-			return leftMatch.Line < rightMatch.Line
-		default:
-			return leftMatch.RuleID < rightMatch.RuleID
-		}
-	})
-}
-
-func SortNginxSites(sites []NginxSite) {
-	sort.Slice(sites, func(leftIndex int, rightIndex int) bool {
-		if sites[leftIndex].ConfigPath == sites[rightIndex].ConfigPath {
-			return sites[leftIndex].Root < sites[rightIndex].Root
-		}
-
-		return sites[leftIndex].ConfigPath < sites[rightIndex].ConfigPath
-	})
-}
-
-func SortPHPFPMPools(pools []PHPFPMPool) {
-	sort.Slice(pools, func(leftIndex int, rightIndex int) bool {
-		if pools[leftIndex].ConfigPath == pools[rightIndex].ConfigPath {
-			return pools[leftIndex].Name < pools[rightIndex].Name
-		}
-
-		return pools[leftIndex].ConfigPath < pools[rightIndex].ConfigPath
-	})
-}
-
-func SortSupervisorPrograms(programs []SupervisorProgram) {
-	sort.Slice(programs, func(leftIndex int, rightIndex int) bool {
-		if programs[leftIndex].ConfigPath == programs[rightIndex].ConfigPath {
-			return programs[leftIndex].Name < programs[rightIndex].Name
-		}
-
-		return programs[leftIndex].ConfigPath < programs[rightIndex].ConfigPath
-	})
-}
-
-func SortSupervisorHTTPServers(servers []SupervisorHTTPServer) {
-	sort.Slice(servers, func(leftIndex int, rightIndex int) bool {
-		if servers[leftIndex].ConfigPath == servers[rightIndex].ConfigPath {
-			return servers[leftIndex].Bind < servers[rightIndex].Bind
-		}
-
-		return servers[leftIndex].ConfigPath < servers[rightIndex].ConfigPath
-	})
-}
-
-func SortSystemdUnits(units []SystemdUnit) {
-	sort.Slice(units, func(leftIndex int, rightIndex int) bool {
-		if units[leftIndex].Path == units[rightIndex].Path {
-			return units[leftIndex].Name < units[rightIndex].Name
-		}
-
-		return units[leftIndex].Path < units[rightIndex].Path
-	})
-}
-
-func SortCronEntries(entries []CronEntry) {
-	sort.Slice(entries, func(leftIndex int, rightIndex int) bool {
-		if entries[leftIndex].SourcePath == entries[rightIndex].SourcePath {
-			if entries[leftIndex].Schedule == entries[rightIndex].Schedule {
-				return entries[leftIndex].Command < entries[rightIndex].Command
-			}
-
-			return entries[leftIndex].Schedule < entries[rightIndex].Schedule
-		}
-
-		return entries[leftIndex].SourcePath < entries[rightIndex].SourcePath
-	})
-}
-
-func SortListenerRecords(records []ListenerRecord) {
-	sort.Slice(records, func(leftIndex int, rightIndex int) bool {
-		leftRecord := records[leftIndex]
-		rightRecord := records[rightIndex]
-
-		switch {
-		case leftRecord.Protocol != rightRecord.Protocol:
-			return leftRecord.Protocol < rightRecord.Protocol
-		case leftRecord.LocalPort != rightRecord.LocalPort:
-			return leftRecord.LocalPort < rightRecord.LocalPort
-		default:
-			return leftRecord.LocalAddress < rightRecord.LocalAddress
-		}
-	})
-}
-
-func SortSSHConfigs(configs []SSHConfig) {
-	sort.Slice(configs, func(leftIndex int, rightIndex int) bool {
-		return configs[leftIndex].Path < configs[rightIndex].Path
-	})
-}
-
-func SortSudoRules(rules []SudoRule) {
-	sort.Slice(rules, func(leftIndex int, rightIndex int) bool {
-		if rules[leftIndex].Path == rules[rightIndex].Path {
-			return rules[leftIndex].Principal < rules[rightIndex].Principal
-		}
-
-		return rules[leftIndex].Path < rules[rightIndex].Path
-	})
-}
-
-func SortFirewallSummaries(summaries []FirewallSummary) {
-	sort.Slice(summaries, func(leftIndex int, rightIndex int) bool {
-		return summaries[leftIndex].Source < summaries[rightIndex].Source
-	})
 }
 
 func (app LaravelApp) PathRecord(relativePath string) (PathRecord, bool) {

@@ -241,6 +241,30 @@ func TestFrameworkHeuristicsCheckKeepsUnsafeFilamentResourceVisibleWhenAnotherRe
 	}
 }
 
+func TestFrameworkHeuristicsCheckBuildsDistinctIDsForDifferentFilamentResources(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+	app.Packages = []model.PackageRecord{{Name: "filament/filament", Version: "v3.2.0", Source: "composer.lock"}}
+	app.SourceMatches = []model.SourceMatch{
+		{RuleID: "filament.resource.detected", RelativePath: "app/Filament/Resources/InvoiceResource.php", Line: 1, Detail: "detected a Filament resource file"},
+		{RuleID: "filament.resource.detected", RelativePath: "app/Filament/Resources/SubscriptionResource.php", Line: 1, Detail: "detected a Filament resource file"},
+	}
+
+	result, err := checks.FrameworkHeuristicsCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(result.Findings) != 2 {
+		t.Fatalf("expected two findings, got %+v", result.Findings)
+	}
+	if result.Findings[0].ID == result.Findings[1].ID {
+		t.Fatalf("expected distinct finding IDs, got %+v", result.Findings)
+	}
+}
+
 func TestFrameworkHeuristicsCheckReportsFortifyAndInertiaSignals(t *testing.T) {
 	t.Parallel()
 

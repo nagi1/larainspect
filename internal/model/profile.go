@@ -11,6 +11,7 @@ type HostProfile struct {
 	Name     string
 	OSFamily string
 	Paths    DiscoveryPaths
+	Commands DiscoveryCommands
 	Switches DiscoverySwitches
 }
 
@@ -28,6 +29,12 @@ type DiscoverySwitches struct {
 	DiscoverPHPFPM     bool
 	DiscoverSupervisor bool
 	DiscoverSystemd    bool
+}
+
+type DiscoveryCommands struct {
+	NginxBinary      string
+	PHPFPMBinaries   []string
+	SupervisorBinary string
 }
 
 func IsSupportedOSFamily(osFamily string) bool {
@@ -107,6 +114,18 @@ func (config AuditConfig) NormalizedSupervisorConfigPatterns() []string {
 	return config.effectivePatternList(defaultSupervisorConfigPatterns(config.NormalizedOSFamily()), config.Profile.Paths.SupervisorConfigPatterns)
 }
 
+func (config AuditConfig) NormalizedNginxBinary() string {
+	return strings.TrimSpace(config.Profile.Commands.NginxBinary)
+}
+
+func (config AuditConfig) NormalizedPHPFPMBinaries() []string {
+	return normalizePaths(append([]string{}, config.Profile.Commands.PHPFPMBinaries...))
+}
+
+func (config AuditConfig) NormalizedSupervisorBinary() string {
+	return strings.TrimSpace(config.Profile.Commands.SupervisorBinary)
+}
+
 func (config AuditConfig) NormalizedSystemdUnitPatterns() []string {
 	return config.effectivePatternList(defaultSystemdUnitPatterns(config.NormalizedOSFamily()), config.Profile.Paths.SystemdUnitPatterns)
 }
@@ -179,6 +198,10 @@ func defaultNginxConfigPatterns(osFamily string) []string {
 		"/usr/local/etc/nginx/nginx.conf",
 		"/usr/local/etc/nginx/conf.d/*.conf",
 		"/usr/local/etc/nginx/servers/*",
+		"/www/server/nginx/conf/nginx.conf",
+		"/www/server/nginx/conf/vhost/*.conf",
+		"/www/server/nginx/src/conf/nginx.conf",
+		"/www/server/panel/vhost/nginx/*.conf",
 	}
 }
 
@@ -188,17 +211,23 @@ func defaultPHPFPMPoolPatterns(osFamily string) []string {
 		return []string{
 			"/etc/php/*/fpm/pool.d/*.conf",
 			"/usr/local/etc/php-fpm.d/*.conf",
+			"/www/server/php/*/etc/php-fpm.conf",
+			"/www/server/php/*/etc/php-fpm.d/*.conf",
 		}
 	case "rhel":
 		return []string{
 			"/etc/php-fpm.d/*.conf",
 			"/usr/local/etc/php-fpm.d/*.conf",
+			"/www/server/php/*/etc/php-fpm.conf",
+			"/www/server/php/*/etc/php-fpm.d/*.conf",
 		}
 	default:
 		return []string{
 			"/etc/php/*/fpm/pool.d/*.conf",
 			"/etc/php-fpm.d/*.conf",
 			"/usr/local/etc/php-fpm.d/*.conf",
+			"/www/server/php/*/etc/php-fpm.conf",
+			"/www/server/php/*/etc/php-fpm.d/*.conf",
 		}
 	}
 }

@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/nagi1/larainspect/internal/model"
 	"github.com/nagi1/larainspect/internal/ux"
+	"github.com/spf13/cobra"
 )
 
 type App struct {
@@ -28,25 +28,24 @@ func NewAppWithInput(stdin io.Reader, stdout io.Writer, stderr io.Writer) App {
 }
 
 func (app App) Run(ctx context.Context, args []string) int {
-	if len(args) == 0 {
-		app.printRootHelp(app.stdout)
-		return 0
-	}
+	rootCmd := app.newRootCommand(ctx)
+	rootCmd.SetArgs(args)
+	rootCmd.SetOut(app.stdout)
+	rootCmd.SetErr(app.stderr)
 
-	switch args[0] {
-	case "help", "--help", "-h":
-		app.printRootHelp(app.stdout)
-		return 0
-	case "version", "--version":
-		fmt.Fprintln(app.stdout, "larainspect dev")
-		return 0
-	case "audit":
-		return runAuditCommandWithInput(ctx, app.stdin, app.stdout, app.stderr, args[1:])
-	default:
-		fmt.Fprintf(app.stderr, "unknown command %q\n\n", args[0])
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		var cmdErr *commandError
+		if errors.As(err, &cmdErr) {
+			cmdErr.write(app.stderr)
+			return cmdErr.code
+		}
+
+		fmt.Fprintf(app.stderr, "%v\n\n", err)
 		app.printRootHelp(app.stderr)
 		return int(model.ExitCodeUsageError)
 	}
+
+	return 0
 }
 
 func (app App) printRootHelp(writer io.Writer) {
@@ -54,20 +53,107 @@ func (app App) printRootHelp(writer io.Writer) {
 	fmt.Fprintln(writer)
 }
 
-func newFlagSet(name string) *flag.FlagSet {
-	flagSet := flag.NewFlagSet(name, flag.ContinueOnError)
-	flagSet.SetOutput(io.Discard)
-	return flagSet
+func (app App) printVersion(writer io.Writer) {
+	fmt.Fprintf(writer, "larainspect %s\n", Version)
 }
 
-func writeFlagError(writer io.Writer, err error, usage func(io.Writer)) {
+func (app App) newRootCommand(ctx context.Context) *cobra.Command {
+	var versionRequested bool
+
+	rootCmd := &cobra.Command{
+		Use:           "larainspect",
+		Short:         "Read-only Laravel VPS auditor for operators under pressure.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if versionRequested {
+				app.printVersion(cmd.OutOrStdout())
+				return nil
+			}
+
+			app.printRootHelp(cmd.OutOrStdout())
+			return nil
+		},
+	}
+
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.Flags().BoolVar(&versionRequested, "version", false, "print version")
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		app.printRootHelp(cmd.OutOrStdout())
+	})
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return newUsageError(err, app.printRootHelp)
+	})
+
+	rootCmd.AddCommand(app.newAuditCommand(ctx))
+	rootCmd.AddCommand(app.newControlsCommand())
+	rootCmd.AddCommand(app.newVersionCommand())
+
+	return rootCmd
+}
+
+func (app App) newVersionCommand() *cobra.Command {
+	versionCmd := &cobra.Command{
+		Use:           "version",
+		Short:         "Print the development version",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Run: func(cmd *cobra.Command, args []string) {
+			app.printVersion(cmd.OutOrStdout())
+		},
+	}
+
+	versionCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		app.printVersion(cmd.OutOrStdout())
+	})
+
+	return versionCmd
+}
+
+type commandError struct {
+	code  int
+	err   error
+	usage func(io.Writer)
+}
+
+func (err *commandError) Error() string {
+	if err == nil || err.err == nil {
+		return ""
+	}
+
+	return err.err.Error()
+}
+
+func (err *commandError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+
+	return err.err
+}
+
+func (err *commandError) write(writer io.Writer) {
 	if err == nil {
 		return
 	}
 
-	if !errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(writer, err)
-		fmt.Fprintln(writer)
+	if err.err != nil {
+		fmt.Fprintln(writer, err.err)
+		if err.usage != nil {
+			fmt.Fprintln(writer)
+		}
 	}
-	usage(writer)
+
+	if err.usage != nil {
+		err.usage(writer)
+	}
+}
+
+func newUsageError(err error, usage func(io.Writer)) *commandError {
+	return &commandError{
+		code:  int(model.ExitCodeUsageError),
+		err:   err,
+		usage: usage,
+	}
 }

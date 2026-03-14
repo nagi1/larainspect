@@ -8,8 +8,10 @@ import (
 	"github.com/nagi1/larainspect/internal/cli"
 )
 
+var exitFunc = os.Exit
+
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	exitFunc(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {

@@ -10,6 +10,7 @@ import (
 const (
 	OutputFormatTerminal = "terminal"
 	OutputFormatJSON     = "json"
+	OutputFormatMarkdown = "markdown"
 )
 
 type Verbosity string
@@ -69,7 +70,7 @@ func NormalizeOutputFormat(format string) string {
 
 func IsValidOutputFormat(format string) bool {
 	switch NormalizeOutputFormat(format) {
-	case OutputFormatTerminal, OutputFormatJSON:
+	case OutputFormatTerminal, OutputFormatJSON, OutputFormatMarkdown:
 		return true
 	default:
 		return false
@@ -78,6 +79,38 @@ func IsValidOutputFormat(format string) bool {
 
 func (config AuditConfig) UsesTerminalOutput() bool {
 	return NormalizeOutputFormat(config.Format) == OutputFormatTerminal
+}
+
+func (config AuditConfig) NormalizedReportJSONPath() string {
+	return strings.TrimSpace(config.ReportJSONPath)
+}
+
+func (config AuditConfig) NormalizedReportMarkdownPath() string {
+	return strings.TrimSpace(config.ReportMarkdownPath)
+}
+
+func (config AuditConfig) NormalizedReportSARIFPath() string {
+	return strings.TrimSpace(config.ReportSARIFPath)
+}
+
+func (config AuditConfig) NormalizedReportHTMLPath() string {
+	return strings.TrimSpace(config.ReportHTMLPath)
+}
+
+func (config AuditConfig) NormalizedDebugLogPath() string {
+	return strings.TrimSpace(config.DebugLogPath)
+}
+
+func (config AuditConfig) NormalizedBaselinePath() string {
+	return strings.TrimSpace(config.BaselinePath)
+}
+
+func (config AuditConfig) NormalizedUpdateBaselinePath() string {
+	return strings.TrimSpace(config.UpdateBaselinePath)
+}
+
+func (config AuditConfig) NormalizedStoreDir() string {
+	return strings.TrimSpace(config.StoreDir)
 }
 
 func (config AuditConfig) ShouldDiscoverApplications() bool {

@@ -28,6 +28,7 @@ func TestOnboardingModes(t *testing.T) {
 	for _, want := range []string{
 		"Starting read-only audit",
 		"Scope: app-focused run at /var/www/shop",
+		"Stages: setup -> discovery -> checks -> correlation -> report",
 		"Interactivity: enabled",
 		"Color preference: never",
 		"Screen-reader mode: enabled",
@@ -72,13 +73,30 @@ func TestFooterModes(t *testing.T) {
 		t.Fatalf("expected clean footer guidance, got %q", clean)
 	}
 
-	report := model.Report{Summary: model.Summary{TotalFindings: 1}}
-	findingFooter := Footer(report, model.AuditConfig{Verbosity: model.VerbosityVerbose, Scope: model.ScanScopeAuto})
+	report := model.Report{
+		Summary: model.Summary{
+			TotalFindings: 1,
+			SeverityCounts: map[model.Severity]int{
+				model.SeverityCritical:      0,
+				model.SeverityHigh:          1,
+				model.SeverityMedium:        0,
+				model.SeverityLow:           0,
+				model.SeverityInformational: 0,
+			},
+		},
+	}
+	findingFooter := Footer(report, model.AuditConfig{Verbosity: model.VerbosityVerbose, Scope: model.ScanScopeAuto, ReportMarkdownPath: "/tmp/report.md"})
 	if !strings.Contains(findingFooter, "Review direct findings first") {
 		t.Fatalf("expected finding footer guidance, got %q", findingFooter)
 	}
 	if !strings.Contains(findingFooter, "--scope app --app-path") {
 		t.Fatalf("expected app scope tip, got %q", findingFooter)
+	}
+	if !strings.Contains(findingFooter, "Exit code for this report: 30.") {
+		t.Fatalf("expected exit code guidance, got %q", findingFooter)
+	}
+	if !strings.Contains(findingFooter, "Artifacts written: markdown=/tmp/report.md.") {
+		t.Fatalf("expected artifact guidance, got %q", findingFooter)
 	}
 
 	screenReaderFooter := Footer(report, model.AuditConfig{Verbosity: model.VerbosityNormal, Scope: model.ScanScopeAuto, ScreenReader: true})
@@ -96,5 +114,9 @@ func TestEnabledDisabledAndDescribeScopeFallback(t *testing.T) {
 
 	if got := describeScope(model.AuditConfig{Scope: model.ScanScopeApp}); got != "app-focused run" {
 		t.Fatalf("describeScope(app without path) = %q", got)
+	}
+
+	if got := describeArtifacts(model.AuditConfig{ReportJSONPath: "/tmp/report.json", ReportMarkdownPath: "/tmp/report.md"}); got != "json=/tmp/report.json, markdown=/tmp/report.md" {
+		t.Fatalf("describeArtifacts() = %q", got)
 	}
 }

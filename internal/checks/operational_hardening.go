@@ -9,6 +9,8 @@ import (
 
 const operationalHardeningCheckID = "operations.hardening"
 
+var _ Check = OperationalHardeningCheck{}
+
 type OperationalHardeningCheck struct{}
 
 func init() {
@@ -19,8 +21,14 @@ func (OperationalHardeningCheck) ID() string {
 	return operationalHardeningCheckID
 }
 
+func (OperationalHardeningCheck) Description() string {
+	return "Inspect host and service hardening controls around the Laravel stack."
+}
+
 func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
+	operationalPrincipals := collectOperationalPrincipals(snapshot)
+	sshAccountsByUser := authorizedSSHAccountsByUser(snapshot.SSHAccounts)
 
 	for _, sshConfig := range snapshot.SSHConfigs {
 		if strings.EqualFold(strings.TrimSpace(sshConfig.PermitRootLogin), "yes") {
@@ -60,39 +68,17 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 		}
 	}
 
+	findings = append(findings, collectSSHAccountPermissionFindings(snapshot.SSHAccounts)...)
+	findings = append(findings, collectRuntimeSSHAccessFindings(snapshot, sshAccountsByUser)...)
+
 	for _, rule := range snapshot.SudoRules {
-		if !sudoRuleTargetsOperationalPrincipal(rule) || !rule.AllCommands {
+		if !sudoRuleTargetsOperationalPrincipal(rule, operationalPrincipals) {
 			continue
 		}
 
-		severity := model.SeverityHigh
-		if rule.NoPassword {
-			severity = model.SeverityCritical
+		if finding, found := buildOperationalSudoFinding(rule, sshAccountsByUser); found {
+			findings = append(findings, finding)
 		}
-
-		evidence := []model.Evidence{
-			{Label: "path", Detail: rule.Path},
-			{Label: "principal", Detail: rule.Principal},
-		}
-		if rule.RunAs != "" {
-			evidence = append(evidence, model.Evidence{Label: "run_as", Detail: rule.RunAs})
-		}
-		if rule.NoPassword {
-			evidence = append(evidence, model.Evidence{Label: "auth", Detail: "NOPASSWD"})
-		}
-
-		findings = append(findings, model.Finding{
-			ID:          buildFindingID(operationalHardeningCheckID, "broad_sudo", rule.Path+"."+rule.Principal),
-			CheckID:     operationalHardeningCheckID,
-			Class:       model.FindingClassDirect,
-			Severity:    severity,
-			Confidence:  model.ConfidenceConfirmed,
-			Title:       "Operational principal has broad sudo access",
-			Why:         "Broad sudo for deploy or runtime-adjacent identities weakens separation between deploy, app runtime, and host administration duties.",
-			Remediation: "Limit sudo to exact operational commands that are genuinely required and avoid granting ALL privileges to deploy or web-adjacent identities.",
-			Evidence:    evidence,
-			Affected:    []model.Target{{Type: "path", Path: rule.Path}},
-		})
 	}
 
 	for _, unit := range snapshot.SystemdUnits {
@@ -110,6 +96,16 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 
 		if len(unit.ReadWritePaths) == 0 && strings.Contains(strings.ToLower(unit.ExecStart), "php-fpm") {
 			findings = append(findings, buildSystemdHardeningFinding(unit, "missing_read_write_paths", "PHP-FPM service does not declare explicit writable paths", "Explicit writable-path declarations help keep the PHP service boundary narrow and make drift easier to detect.", "Constrain PHP-FPM writable paths with ReadWritePaths or equivalent service hardening where practical."))
+		}
+
+		for _, matchedApp := range matchedSystemdApps(unit, snapshot.Apps) {
+			if systemdUnitNeedsLaravelWritablePaths(unit) && len(unit.ReadWritePaths) == 0 {
+				findings = append(findings, buildLaravelWritableBoundaryFinding(unit, matchedApp, nil))
+			}
+
+			if broadPaths := systemdUnitBroadWritablePaths(unit, matchedApp); len(broadPaths) > 0 {
+				findings = append(findings, buildLaravelWritableBoundaryFinding(unit, matchedApp, broadPaths))
+			}
 		}
 	}
 
@@ -149,6 +145,59 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 	}
 
 	return model.CheckResult{Findings: findings}, nil
+}
+
+type sshPathPolicy struct {
+	record          func(model.SSHAccount) []model.PathRecord
+	expectedMaxMode uint32
+	suffix          string
+	title           string
+	why             string
+	remediation     string
+}
+
+func collectSSHAccountPermissionFindings(accounts []model.SSHAccount) []model.Finding {
+	policies := []sshPathPolicy{
+		{
+			record:          func(account model.SSHAccount) []model.PathRecord { return []model.PathRecord{account.SSHDir} },
+			expectedMaxMode: 0o700,
+			suffix:          "ssh_dir_permissions",
+			title:           "SSH directory permissions are broader than 0700",
+			why:             "An SSH home directory with group or world access makes key material and account trust boundaries easier to tamper with or inspect unexpectedly.",
+			remediation:     "Restrict ~/.ssh to mode 0700 or stricter for every operational account.",
+		},
+		{
+			record:          func(account model.SSHAccount) []model.PathRecord { return []model.PathRecord{account.AuthorizedKeys} },
+			expectedMaxMode: 0o600,
+			suffix:          "authorized_keys_permissions",
+			title:           "authorized_keys permissions are broader than 0600",
+			why:             "A broadly readable or writable authorized_keys file weakens trust over who can add, replace, or inspect SSH access grants for the account.",
+			remediation:     "Restrict authorized_keys to mode 0600 or stricter and keep ownership aligned with the intended account.",
+		},
+		{
+			record:          func(account model.SSHAccount) []model.PathRecord { return account.PrivateKeys },
+			expectedMaxMode: 0o600,
+			suffix:          "private_key_permissions",
+			title:           "SSH private key permissions are broader than 0600",
+			why:             "Broadly readable or writable private key files materially increase the chance that operational SSH credentials are copied, replaced, or abused.",
+			remediation:     "Restrict private key files to mode 0600 or stricter and rotate any key that has been broadly exposed.",
+		},
+	}
+
+	findings := []model.Finding{}
+	for _, account := range accounts {
+		for _, policy := range policies {
+			for _, pathRecord := range policy.record(account) {
+				finding, found := buildSSHAccountPathFinding(account.User, pathRecord, policy)
+				if !found {
+					continue
+				}
+				findings = append(findings, finding)
+			}
+		}
+	}
+
+	return findings
 }
 
 func buildSystemdHardeningFinding(unit model.SystemdUnit, suffix string, title string, why string, remediation string) model.Finding {
@@ -206,4 +255,30 @@ func firewallEvidence(summaries []model.FirewallSummary, listeners []model.Liste
 	}
 
 	return evidence
+}
+
+func buildSSHAccountPathFinding(user string, pathRecord model.PathRecord, policy sshPathPolicy) (model.Finding, bool) {
+	if !pathRecord.Inspected || !pathRecord.Exists || !pathModeExceeds(pathRecord, policy.expectedMaxMode) {
+		return model.Finding{}, false
+	}
+
+	evidence := append(pathEvidence(pathRecord),
+		model.Evidence{Label: "account", Detail: user},
+		model.Evidence{Label: "expected_max_mode", Detail: expectedModeOctal(policy.expectedMaxMode)},
+	)
+
+	return model.Finding{
+		ID:          buildFindingID(operationalHardeningCheckID, policy.suffix, pathRecord.AbsolutePath),
+		CheckID:     operationalHardeningCheckID,
+		Class:       model.FindingClassDirect,
+		Severity:    model.SeverityHigh,
+		Confidence:  model.ConfidenceConfirmed,
+		Title:       policy.title,
+		Why:         policy.why,
+		Remediation: policy.remediation,
+		Evidence:    evidence,
+		Affected: []model.Target{
+			{Type: "path", Path: pathRecord.AbsolutePath},
+		},
+	}, true
 }

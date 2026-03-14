@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -85,6 +86,7 @@ func DefaultAllowlist() *Allowlist {
 		{Name: "hostname", AllowedFlags: map[string]struct{}{"-f": {}}, MaxArgs: 1},
 		{Name: "whoami", MaxArgs: 0},
 		{Name: "uname", AllowedFlags: map[string]struct{}{"-a": {}, "-s": {}, "-m": {}, "-r": {}}, MaxArgs: 1},
+		{Name: "nginx", AllowedFlags: map[string]struct{}{"-T": {}, "-V": {}, "-t": {}}, MaxArgs: 1},
 		{Name: "cat", AllowPaths: true},
 		{Name: "readlink", AllowedFlags: map[string]struct{}{"-f": {}, "-n": {}}, AllowPaths: true},
 		{Name: "ls", AllowedFlags: map[string]struct{}{"-1": {}, "-A": {}, "-a": {}, "-al": {}, "-d": {}, "-l": {}, "-la": {}, "-n": {}}, AllowPaths: true},
@@ -101,6 +103,9 @@ func DefaultAllowlist() *Allowlist {
 func (allowlist *Allowlist) Validate(request model.CommandRequest) error {
 	allowlist.mu.RLock()
 	specification, ok := allowlist.specs[request.Name]
+	if !ok {
+		specification, ok = allowlist.specs[filepath.Base(request.Name)]
+	}
 	allowlist.mu.RUnlock()
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrCommandRejected, request.Name)
@@ -117,7 +122,10 @@ type CommandRunner struct {
 	timeout        time.Duration
 	maxOutputBytes int
 	allowlist      *Allowlist
+	observer       CommandObserver
 }
+
+type CommandObserver func(model.CommandResult, error)
 
 func NewCommandRunner(timeout time.Duration, maxOutputBytes int, allowlist *Allowlist) *CommandRunner {
 	if timeout <= 0 {
@@ -137,13 +145,29 @@ func NewCommandRunner(timeout time.Duration, maxOutputBytes int, allowlist *Allo
 	}
 }
 
+func (runner *CommandRunner) SetObserver(observer CommandObserver) {
+	if runner == nil {
+		return
+	}
+
+	runner.observer = observer
+}
+
 var (
 	ErrCommandRejected = errors.New("command rejected")
 	ErrCommandTimedOut = errors.New("command timed out")
 )
 
 func (runner *CommandRunner) Run(ctx context.Context, request model.CommandRequest) (model.CommandResult, error) {
+	result := model.CommandResult{
+		Command:   request,
+		StartedAt: time.Now().UTC(),
+	}
+
 	if err := runner.allowlist.Validate(request); err != nil {
+		result.FinishedAt = time.Now().UTC()
+		result.Duration = result.FinishedAt.Sub(result.StartedAt).Round(time.Millisecond).String()
+		runner.notifyObserver(result, err)
 		return model.CommandResult{}, err
 	}
 
@@ -153,11 +177,6 @@ func (runner *CommandRunner) Run(ctx context.Context, request model.CommandReque
 		commandContext, cancel = context.WithTimeout(ctx, runner.timeout)
 	}
 	defer cancel()
-
-	result := model.CommandResult{
-		Command:   request,
-		StartedAt: time.Now().UTC(),
-	}
 
 	command := exec.CommandContext(commandContext, request.Name, request.Args...)
 	stdout := newCaptureBuffer(runner.maxOutputBytes)
@@ -175,20 +194,33 @@ func (runner *CommandRunner) Run(ctx context.Context, request model.CommandReque
 	switch {
 	case runErr == nil:
 		result.ExitCode = 0
+		runner.notifyObserver(result, nil)
 		return result, nil
 	case errors.Is(commandContext.Err(), context.DeadlineExceeded):
 		result.TimedOut = true
 		result.ExitCode = -1
-		return result, fmt.Errorf("%w: %s", ErrCommandTimedOut, request.Name)
+		err := fmt.Errorf("%w: %s", ErrCommandTimedOut, request.Name)
+		runner.notifyObserver(result, err)
+		return result, err
 	default:
 		var exitError *exec.ExitError
 		if errors.As(runErr, &exitError) {
 			result.ExitCode = exitCode(exitError)
+			runner.notifyObserver(result, nil)
 			return result, nil
 		}
 
+		runner.notifyObserver(result, runErr)
 		return result, runErr
 	}
+}
+
+func (runner *CommandRunner) notifyObserver(result model.CommandResult, err error) {
+	if runner == nil || runner.observer == nil {
+		return
+	}
+
+	runner.observer(result, err)
 }
 
 type captureBuffer struct {

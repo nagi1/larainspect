@@ -46,6 +46,17 @@ func TestProfileHelpersNormalizeOSFamilyAndPatterns(t *testing.T) {
 			t.Fatalf("did not expect debian php-fpm pattern for fedora/rhel profile: %+v", phpPatterns)
 		}
 	}
+
+	foundAAPanelPHPPattern := false
+	for _, pattern := range phpPatterns {
+		if pattern == "/www/server/php/*/etc/php-fpm.conf" {
+			foundAAPanelPHPPattern = true
+			break
+		}
+	}
+	if !foundAAPanelPHPPattern {
+		t.Fatalf("expected aaPanel php-fpm main config pattern, got %+v", phpPatterns)
+	}
 }
 
 func TestProfileHelpersAllowReplacingDefaultPatterns(t *testing.T) {
@@ -83,14 +94,49 @@ func TestProfileHelpersNormalizeProfileNameAndServicePatterns(t *testing.T) {
 	}
 
 	foundRHELSupervisorPath := false
+	foundAAPanelNginxPath := false
 	for _, pattern := range supervisorPatterns {
 		if pattern == "/etc/supervisord.d/*.ini" {
 			foundRHELSupervisorPath = true
+		}
+	}
+	for _, pattern := range config.NormalizedNginxConfigPatterns() {
+		if pattern == "/www/server/panel/vhost/nginx/*.conf" {
+			foundAAPanelNginxPath = true
 			break
 		}
 	}
 
 	if !foundRHELSupervisorPath {
 		t.Fatalf("expected rhel-family supervisor pattern, got %+v", supervisorPatterns)
+	}
+	if !foundAAPanelNginxPath {
+		t.Fatalf("expected aaPanel nginx vhost pattern, got %+v", config.NormalizedNginxConfigPatterns())
+	}
+}
+
+func TestProfileHelpersNormalizeConfiguredCommandPaths(t *testing.T) {
+	t.Parallel()
+
+	config := model.DefaultAuditConfig()
+	config.Profile.Commands.NginxBinary = " /www/server/nginx/sbin/nginx "
+	config.Profile.Commands.PHPFPMBinaries = []string{
+		" /www/server/php/83/sbin/php-fpm ",
+		"/www/server/php/85/sbin/../sbin/php-fpm",
+		"/www/server/php/83/sbin/php-fpm",
+	}
+	config.Profile.Commands.SupervisorBinary = " /www/server/panel/pyenv/bin/supervisord "
+
+	if got := config.NormalizedNginxBinary(); got != "/www/server/nginx/sbin/nginx" {
+		t.Fatalf("NormalizedNginxBinary() = %q", got)
+	}
+
+	phpFPMBinaries := config.NormalizedPHPFPMBinaries()
+	if len(phpFPMBinaries) != 2 || phpFPMBinaries[0] != "/www/server/php/83/sbin/php-fpm" || phpFPMBinaries[1] != "/www/server/php/85/sbin/php-fpm" {
+		t.Fatalf("NormalizedPHPFPMBinaries() = %+v", phpFPMBinaries)
+	}
+
+	if got := config.NormalizedSupervisorBinary(); got != "/www/server/panel/pyenv/bin/supervisord" {
+		t.Fatalf("NormalizedSupervisorBinary() = %q", got)
 	}
 }

@@ -8,5 +8,6 @@ import (
 
 type Correlator interface {
 	ID() string
+	Description() string
 	Correlate(context.Context, model.ExecutionContext, model.Snapshot, []model.Finding) (model.CheckResult, error)
 }

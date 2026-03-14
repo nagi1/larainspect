@@ -198,11 +198,13 @@ func TestNginxAndPHPFPMChecksSkipSafeConfigurations(t *testing.T) {
 			FastCGIPassTargets: []string{"unix:/run/php/shop.sock"},
 		}},
 		PHPFPMPools: []model.PHPFPMPool{{
-			ConfigPath: "/etc/php/8.3/fpm/pool.d/shop.conf",
-			Name:       "shop",
-			User:       "www-data",
-			Listen:     "/run/php/shop.sock",
-			ListenMode: "0660",
+			ConfigPath:  "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:        "shop",
+			User:        "www-data",
+			Listen:      "/run/php/shop.sock",
+			ListenOwner: "www-data",
+			ListenGroup: "www-data",
+			ListenMode:  "0660",
 		}},
 	})
 	if err != nil {

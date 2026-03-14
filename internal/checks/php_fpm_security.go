@@ -11,6 +11,8 @@ import (
 
 const phpFPMSecurityCheckID = "phpfpm.security"
 
+var _ Check = PHPFPMSecurityCheck{}
+
 type PHPFPMSecurityCheck struct{}
 
 func init() {
@@ -21,20 +23,45 @@ func (PHPFPMSecurityCheck) ID() string {
 	return phpFPMSecurityCheckID
 }
 
+func (PHPFPMSecurityCheck) Description() string {
+	return "Inspect PHP-FPM pool isolation, socket, and runtime hardening settings."
+}
+
 func (PHPFPMSecurityCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
+	observedNginxIdentities := collectObservedNginxSocketBoundaryIdentities(snapshot.SystemdUnits)
 
 	for _, pool := range snapshot.PHPFPMPools {
 		if rootPoolFinding, found := buildRootPoolFinding(pool); found {
 			findings = append(findings, rootPoolFinding)
 		}
 
+		if loopbackTCPFinding, found := buildLoopbackTCPPoolFinding(pool); found {
+			findings = append(findings, loopbackTCPFinding)
+		}
+
 		if exposedTCPFinding, found := buildExposedTCPPoolFinding(pool); found {
 			findings = append(findings, exposedTCPFinding)
 		}
 
+		if inheritedEnvironmentFinding, found := buildInheritedEnvironmentFinding(pool); found {
+			findings = append(findings, inheritedEnvironmentFinding)
+		}
+
 		if socketModeFinding, found := buildBroadSocketModeFinding(pool); found {
 			findings = append(findings, socketModeFinding)
+		}
+
+		if socketACLFinding, found := buildMissingSocketACLFinding(pool); found {
+			findings = append(findings, socketACLFinding)
+		}
+
+		if collapsedSocketBoundaryFinding, found := buildCollapsedSocketBoundaryFinding(pool); found {
+			findings = append(findings, collapsedSocketBoundaryFinding)
+		}
+
+		if nginxBoundaryFinding, found := buildObservedNginxSocketBoundaryFinding(pool, snapshot.NginxSites, observedNginxIdentities); found {
+			findings = append(findings, nginxBoundaryFinding)
 		}
 	}
 
@@ -42,7 +69,36 @@ func (PHPFPMSecurityCheck) Run(_ context.Context, _ model.ExecutionContext, snap
 		findings = append(findings, sharedPoolFinding)
 	}
 
+	for _, sharedRuntimeUserFinding := range buildSharedRuntimeUserFindings(snapshot.Apps, snapshot.NginxSites, snapshot.PHPFPMPools) {
+		findings = append(findings, sharedRuntimeUserFinding)
+	}
+
 	return model.CheckResult{Findings: findings}, nil
+}
+
+func buildInheritedEnvironmentFinding(pool model.PHPFPMPool) (model.Finding, bool) {
+	if !strings.EqualFold(strings.TrimSpace(pool.ClearEnv), "no") {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(phpFPMSecurityCheckID, "clear_env_disabled", pool.ConfigPath+"."+pool.Name),
+		CheckID:     phpFPMSecurityCheckID,
+		Class:       model.FindingClassDirect,
+		Severity:    model.SeverityLow,
+		Confidence:  model.ConfidenceConfirmed,
+		Title:       "PHP-FPM pool inherits the parent service environment",
+		Why:         "Disabling clear_env passes the parent service environment into PHP workers and makes the runtime boundary less explicit when secrets or service-level variables are present.",
+		Remediation: "Keep clear_env enabled by default and pass only the specific environment variables the Laravel app needs through an explicit runtime mechanism.",
+		Evidence: []model.Evidence{
+			{Label: "config", Detail: pool.ConfigPath},
+			{Label: "pool", Detail: pool.Name},
+			{Label: "clear_env", Detail: pool.ClearEnv},
+		},
+		Affected: []model.Target{
+			{Type: "path", Path: pool.ConfigPath},
+		},
+	}, true
 }
 
 func buildRootPoolFinding(pool model.PHPFPMPool) (model.Finding, bool) {
@@ -95,13 +151,38 @@ func buildExposedTCPPoolFinding(pool model.PHPFPMPool) (model.Finding, bool) {
 	}, true
 }
 
+func buildLoopbackTCPPoolFinding(pool model.PHPFPMPool) (model.Finding, bool) {
+	if !poolListensOnLoopbackTCP(pool.Listen) {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(phpFPMSecurityCheckID, "loopback_tcp_listener", pool.ConfigPath+"."+pool.Name),
+		CheckID:     phpFPMSecurityCheckID,
+		Class:       model.FindingClassHeuristic,
+		Severity:    model.SeverityMedium,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "PHP-FPM pool uses loopback TCP instead of a Unix socket",
+		Why:         "Loopback TCP is safer than broad exposure, but it still widens the local attack surface compared with a tightly permissioned Unix socket and makes socket ACL drift impossible to enforce.",
+		Remediation: "Prefer a Unix socket with explicit owner, group, and 0660-style permissions unless TCP is required for a documented reason.",
+		Evidence: []model.Evidence{
+			{Label: "config", Detail: pool.ConfigPath},
+			{Label: "pool", Detail: pool.Name},
+			{Label: "listen", Detail: pool.Listen},
+		},
+		Affected: []model.Target{
+			{Type: "path", Path: pool.ConfigPath},
+		},
+	}, true
+}
+
 func buildBroadSocketModeFinding(pool model.PHPFPMPool) (model.Finding, bool) {
-	if strings.Contains(pool.Listen, ":") || strings.TrimSpace(pool.ListenMode) == "" {
+	if !poolUsesUnixSocket(pool.Listen) || strings.TrimSpace(pool.ListenMode) == "" {
 		return model.Finding{}, false
 	}
 
 	listenMode, ok := parseOctalMode(pool.ListenMode)
-	if !ok || listenMode&0o002 == 0 {
+	if !ok || !socketModeExceedsBoundary(listenMode) {
 		return model.Finding{}, false
 	}
 
@@ -112,13 +193,79 @@ func buildBroadSocketModeFinding(pool model.PHPFPMPool) (model.Finding, bool) {
 		Severity:    model.SeverityHigh,
 		Confidence:  model.ConfidenceConfirmed,
 		Title:       "PHP-FPM socket permissions are too broad",
-		Why:         "A world-writable PHP-FPM socket lets unintended local users connect to the pool and execute PHP requests.",
-		Remediation: "Restrict the pool socket to the intended Nginx owner and group, usually with mode 0660, and avoid world-writable socket permissions.",
+		Why:         "Socket permissions broader than 0660 make the local PHP request boundary easier to misuse and can let unintended users or groups connect to the pool.",
+		Remediation: "Restrict the pool socket to the intended Nginx owner and group, usually with mode 0660, and avoid broader socket permissions.",
 		Evidence: []model.Evidence{
 			{Label: "config", Detail: pool.ConfigPath},
 			{Label: "pool", Detail: pool.Name},
 			{Label: "listen", Detail: pool.Listen},
 			{Label: "mode", Detail: pool.ListenMode},
+		},
+		Affected: []model.Target{
+			{Type: "path", Path: pool.ConfigPath},
+		},
+	}, true
+}
+
+func buildMissingSocketACLFinding(pool model.PHPFPMPool) (model.Finding, bool) {
+	if !poolUsesUnixSocket(pool.Listen) {
+		return model.Finding{}, false
+	}
+
+	if strings.TrimSpace(pool.ListenOwner) != "" && strings.TrimSpace(pool.ListenGroup) != "" {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(phpFPMSecurityCheckID, "missing_socket_acl", pool.ConfigPath+"."+pool.Name),
+		CheckID:     phpFPMSecurityCheckID,
+		Class:       model.FindingClassHeuristic,
+		Severity:    model.SeverityMedium,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "PHP-FPM Unix socket does not declare an explicit owner and group",
+		Why:         "Without explicit listen.owner and listen.group settings, the effective socket access boundary is easier to misconfigure and harder to audit against the intended Nginx trust boundary.",
+		Remediation: "Declare both listen.owner and listen.group for each Unix socket and keep them limited to the exact Nginx access boundary needed by the app.",
+		Evidence: []model.Evidence{
+			{Label: "config", Detail: pool.ConfigPath},
+			{Label: "pool", Detail: pool.Name},
+			{Label: "listen", Detail: pool.Listen},
+			{Label: "listen_owner", Detail: pool.ListenOwner},
+			{Label: "listen_group", Detail: pool.ListenGroup},
+		},
+		Affected: []model.Target{
+			{Type: "path", Path: pool.ConfigPath},
+		},
+	}, true
+}
+
+func buildCollapsedSocketBoundaryFinding(pool model.PHPFPMPool) (model.Finding, bool) {
+	if !poolUsesUnixSocket(pool.Listen) {
+		return model.Finding{}, false
+	}
+	if strings.TrimSpace(pool.ListenOwner) == "" || strings.TrimSpace(pool.ListenGroup) == "" {
+		return model.Finding{}, false
+	}
+	if !socketACLMatchesRuntimeIdentity(pool) {
+		return model.Finding{}, false
+	}
+
+	return model.Finding{
+		ID:          buildFindingID(phpFPMSecurityCheckID, "collapsed_socket_boundary", pool.ConfigPath+"."+pool.Name),
+		CheckID:     phpFPMSecurityCheckID,
+		Class:       model.FindingClassHeuristic,
+		Severity:    model.SeverityMedium,
+		Confidence:  model.ConfidenceProbable,
+		Title:       "PHP-FPM socket ACL mirrors the runtime identity",
+		Why:         "When the socket owner and group match the PHP-FPM runtime identity, the web-entry boundary is less explicit and more local processes can often connect than intended.",
+		Remediation: "Keep the socket ACL aligned to the exact Nginx access boundary needed by the app instead of mirroring the PHP runtime identity by default.",
+		Evidence: []model.Evidence{
+			{Label: "config", Detail: pool.ConfigPath},
+			{Label: "pool", Detail: pool.Name},
+			{Label: "listen", Detail: pool.Listen},
+			{Label: "runtime_user", Detail: pool.User},
+			{Label: "runtime_group", Detail: pool.Group},
+			{Label: "listen_owner", Detail: pool.ListenOwner},
+			{Label: "listen_group", Detail: pool.ListenGroup},
 		},
 		Affected: []model.Target{
 			{Type: "path", Path: pool.ConfigPath},
@@ -187,6 +334,63 @@ func buildSharedPoolFindings(apps []model.LaravelApp, nginxSites []model.NginxSi
 	return findings
 }
 
+func buildSharedRuntimeUserFindings(apps []model.LaravelApp, nginxSites []model.NginxSite, pools []model.PHPFPMPool) []model.Finding {
+	findings := []model.Finding{}
+	appsByRuntimeUser := map[string][]string{}
+	poolsByRuntimeUser := map[string][]string{}
+
+	for _, app := range apps {
+		for _, pool := range matchedPHPFPMPoolsForApp(app, nginxSites, pools) {
+			runtimeUser := strings.TrimSpace(pool.User)
+			if runtimeUser == "" {
+				continue
+			}
+
+			appsByRuntimeUser[runtimeUser] = append(appsByRuntimeUser[runtimeUser], app.RootPath)
+			poolsByRuntimeUser[runtimeUser] = append(poolsByRuntimeUser[runtimeUser], pool.Name)
+		}
+	}
+
+	for runtimeUser, appRoots := range appsByRuntimeUser {
+		slices.Sort(appRoots)
+		appRoots = slices.Compact(appRoots)
+		if len(appRoots) < 2 {
+			continue
+		}
+
+		poolNames := poolsByRuntimeUser[runtimeUser]
+		slices.Sort(poolNames)
+		poolNames = slices.Compact(poolNames)
+
+		evidence := []model.Evidence{
+			{Label: "runtime_user", Detail: runtimeUser},
+		}
+		for _, appRoot := range appRoots {
+			evidence = append(evidence, model.Evidence{Label: "app", Detail: appRoot})
+		}
+		for _, poolName := range poolNames {
+			evidence = append(evidence, model.Evidence{Label: "pool", Detail: poolName})
+		}
+
+		findings = append(findings, model.Finding{
+			ID:          buildFindingID(phpFPMSecurityCheckID, "shared_runtime_user", runtimeUser),
+			CheckID:     phpFPMSecurityCheckID,
+			Class:       model.FindingClassDirect,
+			Severity:    model.SeverityHigh,
+			Confidence:  model.ConfidenceConfirmed,
+			Title:       "Multiple Laravel apps share the same PHP-FPM runtime user",
+			Why:         "Even with separate pools, reusing one runtime user across unrelated apps weakens filesystem isolation and makes lateral movement easier when one app is compromised.",
+			Remediation: "Prefer a dedicated PHP-FPM runtime user per Laravel app, or document and justify any shared identity explicitly.",
+			Evidence:    evidence,
+			Affected: []model.Target{
+				{Type: "name", Name: runtimeUser},
+			},
+		})
+	}
+
+	return findings
+}
+
 func fastCGITargetsForApp(app model.LaravelApp, nginxSites []model.NginxSite) []string {
 	targets := []string{}
 
@@ -232,4 +436,33 @@ func poolListensOnBroadTCP(listen string) bool {
 	}
 
 	return true
+}
+
+func poolListensOnLoopbackTCP(listen string) bool {
+	normalizedListen := strings.TrimSpace(strings.ToLower(listen))
+	if normalizedListen == "" || !strings.Contains(normalizedListen, ":") {
+		return false
+	}
+
+	for _, loopbackPrefix := range []string{"127.0.0.1:", "localhost:", "[::1]:"} {
+		if strings.HasPrefix(normalizedListen, loopbackPrefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func poolUsesUnixSocket(listen string) bool {
+	trimmedListen := strings.TrimSpace(listen)
+	return trimmedListen != "" && !strings.Contains(trimmedListen, ":")
+}
+
+func socketModeExceedsBoundary(mode uint32) bool {
+	return mode&^0o660 != 0
+}
+
+func socketACLMatchesRuntimeIdentity(pool model.PHPFPMPool) bool {
+	return strings.EqualFold(strings.TrimSpace(pool.ListenOwner), strings.TrimSpace(pool.User)) &&
+		strings.EqualFold(strings.TrimSpace(pool.ListenGroup), strings.TrimSpace(pool.Group))
 }

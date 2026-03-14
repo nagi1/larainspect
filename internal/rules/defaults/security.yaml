@@ -1,0 +1,453 @@
+rules:
+  - id: laravel.auth.login_using_id_variable
+    title: loginUsingId() authenticates from a variable
+    severity: high
+    confidence: possible
+    class: heuristic_finding
+    category: auth
+    enabled: true
+    why: >-
+      loginUsingId() skips password verification, so using it with a variable-sourced
+      identifier can become an auth bypass if the value is not derived from a fully
+      trusted flow.
+    remediation: >-
+      Restrict loginUsingId() to tightly verified flows such as trusted signed URLs
+      or internal callbacks, and document why the identifier is safe.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: authenticates with loginUsingId() using a variable
+        pattern: >-
+          (?m)\b(?:Auth::loginUsingId|auth\(\)->loginUsingId)\s*\(\s*\$
+
+  - id: laravel.security.mass_assignment.guarded_all
+    title: Model uses an empty $guarded list
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: mass-assignment
+    enabled: true
+    why: >-
+      Setting $guarded = [] makes every attribute mass assignable and increases the
+      chance that privilege or ownership fields can be written unintentionally through
+      request-driven create or update flows.
+    remediation: >-
+      Prefer explicit $fillable fields or at least guard privilege-sensitive attributes
+      such as role, is_admin, and tenant ownership fields.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: marks every model attribute as mass assignable with an empty guarded list
+        pattern: >-
+          (?m)\$guarded\s*=\s*\[\s*\]
+
+  - id: laravel.security.upload.executable_mimes
+    title: Upload validation allows executable file types
+    severity: critical
+    confidence: probable
+    class: heuristic_finding
+    category: uploads
+    enabled: true
+    why: >-
+      Allowing executable extensions such as php, phtml, or phar in upload validation
+      materially raises the risk of remote code execution if web boundaries or storage
+      placement drift.
+    remediation: >-
+      Restrict upload validation to explicitly safe file types and verify uploaded
+      content stays outside executable web paths.
+    patterns:
+      - type: regex
+        targets:
+          - php-files
+          - blade-files
+        detail: allows executable file extensions in upload validation
+        pattern: >-
+          (?i)mimes?[^'"\n]*:(php|phtml|phar|sh|exe|bat|cmd)
+
+  - id: laravel.security.upload.risky_web_types
+    title: Upload validation allows SVG or HTML content
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: uploads
+    enabled: true
+    why: >-
+      SVG and HTML uploads can carry active content and become XSS or phishing
+      delivery paths when they are later served publicly, embedded, or rendered
+      inline.
+    remediation: >-
+      Restrict uploads to passive file types where possible. If SVG or HTML is
+      required, sanitize it aggressively, store it outside public execution paths,
+      and serve it with a safe download-oriented policy.
+    patterns:
+      - type: regex
+        targets:
+          - php-files
+          - blade-files
+        detail: allows SVG or HTML file types in upload validation
+        pattern: >-
+          (?i)mimes?[^'"\n]*:(svg|html|htm|xhtml)
+      - type: regex
+        targets:
+          - php-files
+          - blade-files
+        detail: allows SVG or HTML MIME types in upload validation
+        pattern: >-
+          (?i)mimetypes?[^'"\n]*:(image/svg\+xml|text/html|application/xhtml\+xml)
+
+  - id: laravel.security.upload.risky_web_types_extension_only
+    title: Upload validation relies on extension checks for active web content
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: uploads
+    enabled: true
+    why: >-
+      Allowing SVG or HTML through extension-only checks leaves the upload policy
+      dependent on filenames instead of a stronger content-type decision, which
+      is easier to drift or bypass in mixed upload flows.
+    remediation: >-
+      Do not trust extension checks alone for active web content. Prefer keeping
+      SVG and HTML off public disks, validate the effective content type, and add
+      sanitization or a download-only serving policy when those types are required.
+    patterns:
+      - type: regex
+        targets:
+          - php-files
+          - blade-files
+        detail: allows SVG or HTML through extension-only upload validation
+        exclude_pattern: >-
+          (?i)\bmimetypes?\b|\bimage\b
+        pattern: >-
+          (?i)mimes?[^'"\n]*:(svg|html|htm|xhtml)
+
+  - id: laravel.security.upload.risky_web_types_mime_only
+    title: Upload validation relies on MIME checks for active web content
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: uploads
+    enabled: true
+    why: >-
+      Allowing SVG or HTML through MIME-only checks leaves the policy dependent
+      on the reported content type alone, which can be weaker than combining
+      explicit allowlists, storage controls, and content sanitization.
+    remediation: >-
+      Treat SVG and HTML as active content: keep them off public disks where
+      possible, add explicit policy checks beyond MIME alone, and serve them
+      with a download-oriented boundary unless they are sanitized intentionally.
+    patterns:
+      - type: regex
+        targets:
+          - php-files
+          - blade-files
+        detail: allows SVG or HTML through MIME-only upload validation
+        exclude_pattern: >-
+          (?i)\bmimes?\b|\bimage\b
+        pattern: >-
+          (?i)mimetypes?[^'"\n]*:(image/svg\+xml|text/html|application/xhtml\+xml)
+
+  - id: laravel.security.upload.file_without_constraints
+    title: Upload validation shows a file rule without obvious type or size constraints
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: uploads
+    enabled: true
+    why: >-
+      A plain file validation rule without nearby type or size restrictions is easy
+      to under-harden and can allow unsafe formats, oversized payloads, or policy
+      drift over time.
+    remediation: >-
+      Add explicit size and type constraints such as mimes, mimetypes, image, or max
+      near every upload validation rule before trusting the upload path in production.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: shows a bare file validation rule for an upload field
+        pattern: >-
+          (?i)(?:'|")[A-Za-z0-9_.-]+(?:'|")\s*=>\s*(?:'|")[^'"\n]*\bfile\b[^'"\n]*(?:'|")
+
+  - id: laravel.debug.dd_call
+    title: Source contains dd()
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: debug
+    enabled: true
+    why: >-
+      dd() stops execution and can dump sensitive runtime data directly into responses,
+      which creates both availability and disclosure risk when left in reachable code.
+    remediation: >-
+      Remove dd() from deployed code and use structured logging or environment-gated
+      diagnostics instead.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: contains a dd() call
+        pattern: >-
+          (?m)\bdd\s*\(
+
+  - id: laravel.debug.dump_call
+    title: Source contains dump()
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: debug
+    enabled: true
+    why: >-
+      dump(), var_dump(), print_r(), var_export(), and Blade dump directives often leak
+      internal state into responses when code paths stay reachable after development.
+    remediation: >-
+      Remove debug output from deployed code paths and keep diagnostics in logs or
+      dedicated developer tooling.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: contains a dump() call
+        pattern: >-
+          (?m)\bdump\s*\(
+
+  - id: laravel.debug.var_dump_call
+    title: Source contains native debug output
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: debug
+    enabled: true
+    why: >-
+      dump(), var_dump(), print_r(), var_export(), and Blade dump directives often leak
+      internal state into responses when code paths stay reachable after development.
+    remediation: >-
+      Remove debug output from deployed code paths and keep diagnostics in logs or
+      dedicated developer tooling.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: contains a native debug output call
+        pattern: >-
+          (?m)\b(var_dump|print_r|var_export)\s*\(
+
+  - id: laravel.debug.phpinfo_call
+    title: Source contains phpinfo()
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: debug
+    enabled: true
+    why: >-
+      phpinfo() exposes PHP runtime details, loaded modules, paths, and environment
+      information that help attackers profile a target quickly.
+    remediation: >-
+      Remove phpinfo() from deployed code or keep it behind short-lived, tightly
+      controlled operational access that never reaches public routes.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: contains a phpinfo() call
+        pattern: >-
+          (?m)\bphpinfo\s*\(
+
+  - id: laravel.debug.blade_dump_directive
+    title: Blade template renders a dump directive
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: debug
+    enabled: true
+    why: >-
+      dump(), var_dump(), print_r(), var_export(), and Blade dump directives often leak
+      internal state into responses when code paths stay reachable after development.
+    remediation: >-
+      Remove debug output from deployed code paths and keep diagnostics in logs or
+      dedicated developer tooling.
+    patterns:
+      - type: regex
+        target: blade-files
+        detail: renders a Blade dump directive
+        pattern: >-
+          (?m)@(dd|dump)\s*\(
+
+  - id: laravel.xss.blade_raw_request
+    title: Blade template renders request data through raw output
+    severity: high
+    confidence: probable
+    class: heuristic_finding
+    category: xss
+    enabled: true
+    why: >-
+      Rendering request-derived values through raw Blade output bypasses Laravel's
+      normal HTML escaping and creates an obvious stored or reflected XSS path.
+    remediation: >-
+      Replace raw Blade output with escaped output and only render HTML after explicit
+      sanitization.
+    patterns:
+      - type: regex
+        target: blade-files
+        detail: renders request-derived data through raw Blade output
+        pattern: >-
+          (?m)\{!!\s*(?:request\(|old\(|\$request->)[^!\n]*!!\}
+
+  - id: laravel.xss.blade_raw_variable
+    title: Blade template renders a variable through raw output
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: xss
+    enabled: true
+    why: >-
+      Raw Blade output is not always exploitable, but it becomes an XSS sink quickly
+      when request, model, or CMS content reaches the template unsanitized.
+    remediation: >-
+      Prefer escaped Blade output by default and document the sanitization path for
+      any value intentionally rendered as raw HTML.
+    patterns:
+      - type: regex
+        target: blade-files
+        detail: renders a PHP variable through raw Blade output
+        exclude_pattern: >-
+          clean\(|purify\(|strip_tags\(|htmlspecialchars\(|Purifier::|markdown\(|sanitize\(
+        pattern: >-
+          (?m)\{!!\s*\$[^!\n]*!!\}
+
+  - id: laravel.xss.script_variable_interpolation
+    title: Blade template interpolates a PHP variable inside a script block
+    severity: medium
+    confidence: possible
+    class: heuristic_finding
+    category: xss
+    enabled: true
+    why: >-
+      Injecting Blade variables directly into JavaScript without JSON encoding can turn
+      harmless data into executable script context when special characters are present.
+    remediation: >-
+      Use @json or another explicit encoder when server values need to cross into
+      JavaScript.
+    patterns:
+      - type: regex
+        target: blade-files
+        detail: interpolates a PHP variable directly inside a script block
+        pattern: >-
+          (?is)<script[^>]*>.*\{\{\s*\$[^}]+\}\}.*</script>
+
+  - id: laravel.inject.db_raw_variable
+    title: DB::raw() uses a variable or interpolation
+    severity: high
+    confidence: possible
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      DB::raw() with variable content is a common injection footgun because it bypasses
+      Laravel's normal query parameterization model.
+    remediation: >-
+      Replace raw SQL fragments with query-builder methods or explicit parameter
+      bindings wherever the value can vary.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: uses DB::raw() with a variable or interpolation
+        pattern: >-
+          (?m)DB::raw\(\s*(?:['"][^\n]*\$|\$)
+
+  - id: laravel.inject.raw_query_variable
+    title: Raw query builder method uses a variable or interpolation
+    severity: high
+    confidence: possible
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      Raw query builder methods become injection sinks when SQL text is assembled from
+      variable content without separate bindings.
+    remediation: >-
+      Use bound parameters or non-raw query builder operations instead of assembling
+      SQL fragments from variables.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: uses a raw query builder method with a variable or interpolation
+        pattern: >-
+          (?m)->(?:whereRaw|selectRaw|havingRaw|orderByRaw|groupByRaw)\(\s*(?:['"][^\n]*\$|\$)
+
+  - id: laravel.inject.shell_exec
+    title: Source calls a shell execution primitive
+    severity: high
+    confidence: possible
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      exec(), system(), shell_exec(), passthru(), popen(), and proc_open() become
+      command injection sinks easily when any argument includes user-influenced input.
+    remediation: >-
+      Prefer framework or library APIs over shell execution, and strictly validate
+      plus escape every argument when a shell is unavoidable.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: calls a shell execution primitive
+        exclude_pattern: >-
+          escapeshellarg\(|escapeshellcmd\(|Process::|Artisan::
+        pattern: >-
+          (?m)\b(exec|system|shell_exec|passthru|popen|proc_open)\s*\(
+
+  - id: laravel.inject.eval
+    title: Source uses eval()
+    severity: critical
+    confidence: probable
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      eval() executes dynamic PHP code and sharply increases the blast radius of any
+      data-flow mistake that reaches it.
+    remediation: >-
+      Remove eval() and replace it with explicit control flow, templates, or a
+      constrained dispatch mechanism.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: uses eval()
+        pattern: >-
+          (?m)\beval\s*\(
+
+  - id: laravel.inject.unserialize_variable
+    title: Source unserializes a variable directly
+    severity: high
+    confidence: possible
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      unserialize() on variable data can trigger object injection paths and dangerous
+      magic methods when the payload is attacker influenced.
+    remediation: >-
+      Prefer JSON for data interchange, or constrain allowed classes and the provenance
+      of serialized input aggressively.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: unserializes a variable directly
+        pattern: >-
+          (?m)\bunserialize\s*\(\s*\$
+
+  - id: laravel.inject.direct_sql_concat
+    title: Direct SQL call concatenates a variable into query text
+    severity: critical
+    confidence: possible
+    class: heuristic_finding
+    category: injection
+    enabled: true
+    why: >-
+      Concatenating variables into DB::select, DB::update, DB::delete, or DB::statement
+      calls is a strong SQL injection smell because it bypasses parameter binding entirely.
+    remediation: >-
+      Move variable content into query bindings or use higher-level query builder
+      operations.
+    patterns:
+      - type: regex
+        target: php-files
+        detail: builds a direct SQL call using string concatenation and variables
+        pattern: >-
+          (?m)DB::(?:statement|select|insert|update|delete)\(\s*['"][^\n]*\.\s*\$

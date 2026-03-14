@@ -81,6 +81,32 @@ func TestBuildReportInitializesAllSeverityBuckets(t *testing.T) {
 	}
 }
 
+func TestHighestSeverityOrClean(t *testing.T) {
+	t.Parallel()
+
+	cleanReport, err := model.BuildReport(model.Host{}, time.Unix(1700000000, 0), time.Second, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildReport(clean) error = %v", err)
+	}
+	if got := cleanReport.HighestSeverityOrClean(); got != "clean" {
+		t.Fatalf("HighestSeverityOrClean(clean) = %q", got)
+	}
+
+	unknownReport, err := model.BuildReport(model.Host{}, time.Unix(1700000000, 0), time.Second, nil, []model.Unknown{{
+		ID:      "demo.unknown",
+		CheckID: "demo",
+		Title:   "Could not inspect target",
+		Reason:  "permission denied",
+		Error:   model.ErrorKindPermissionDenied,
+	}})
+	if err != nil {
+		t.Fatalf("BuildReport(unknown) error = %v", err)
+	}
+	if got := unknownReport.HighestSeverityOrClean(); got != "unknown-only" {
+		t.Fatalf("HighestSeverityOrClean(unknown) = %q", got)
+	}
+}
+
 func sampleFinding(severity model.Severity) model.Finding {
 	return model.Finding{
 		ID:          "demo.finding",

@@ -60,6 +60,42 @@ server {
 	}
 }
 
+func TestParseNginxSitesRecognizesAlternateExecutablePHPExtensions(t *testing.T) {
+	t.Parallel()
+
+	sites, err := parseNginxSites("/etc/nginx/sites-enabled/shop.conf", `
+server {
+    root /var/www/shop/public;
+
+    location = /index.php {
+        fastcgi_pass unix:/run/php/shop.sock;
+    }
+
+    location ~* \.(php|phtml|phar)$ {
+        fastcgi_pass unix:/run/php/shop.sock;
+    }
+
+    location ~ ^/uploads/.*\.(phtml|phar)$ {
+        fastcgi_pass unix:/run/php/shop.sock;
+    }
+}
+`)
+	if err != nil {
+		t.Fatalf("parseNginxSites() error = %v", err)
+	}
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %+v", sites)
+	}
+
+	site := sites[0]
+	if !site.HasGenericPHPLocation {
+		t.Fatalf("expected alternate executable php extensions to count as generic php handling, got %+v", site)
+	}
+	if !site.UploadExecutionAllowed {
+		t.Fatalf("expected upload-adjacent alternate php extensions to count as upload execution, got %+v", site)
+	}
+}
+
 func TestParseNginxSitesRejectsUnbalancedConfig(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +172,115 @@ func TestSnapshotServiceDiscoversNginxAndPHPFPMConfigs(t *testing.T) {
 
 	if len(snapshot.NginxSites) != 1 || len(snapshot.PHPFPMPools) != 1 {
 		t.Fatalf("expected discovered nginx and php-fpm configs, got %+v %+v", snapshot.NginxSites, snapshot.PHPFPMPools)
+	}
+}
+
+func TestSnapshotServiceDiscoversNginxSitesFromCommand(t *testing.T) {
+	t.Parallel()
+
+	service := newTestSnapshotService()
+	service.commandsEnabled = true
+	service.nginxCommand = "/www/server/nginx/sbin/nginx"
+	service.lookPath = func(name string) (string, error) {
+		if name == "/www/server/nginx/sbin/nginx" {
+			return name, nil
+		}
+		return "", fs.ErrNotExist
+	}
+	service.runCommand = func(_ context.Context, command model.CommandRequest) (model.CommandResult, error) {
+		if command.Name != "/www/server/nginx/sbin/nginx" || len(command.Args) != 1 || command.Args[0] != "-T" {
+			t.Fatalf("unexpected command %+v", command)
+		}
+		return model.CommandResult{
+			ExitCode: 0,
+			Stdout: `
+# configuration file /www/server/nginx/conf/nginx.conf:
+server {
+    server_name app.hypersender.com;
+    root /www/wwwroot/app.hypersender.com/current/public;
+    location ~ \.php$ {
+        fastcgi_pass unix:/tmp/php-cgi-83.sock;
+    }
+}
+`,
+		}, nil
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{Scope: model.ScanScopeHost},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+	if len(snapshot.NginxSites) != 1 {
+		t.Fatalf("expected nginx site from command output, got %+v", snapshot.NginxSites)
+	}
+	if snapshot.NginxSites[0].Root != "/www/wwwroot/app.hypersender.com/current/public" {
+		t.Fatalf("unexpected nginx site %+v", snapshot.NginxSites[0])
+	}
+}
+
+func TestSnapshotServiceReportsConfiguredMissingNginxBinary(t *testing.T) {
+	t.Parallel()
+
+	service := newTestSnapshotService()
+	service.commandsEnabled = true
+	service.nginxCommand = "/www/server/nginx/sbin/nginx"
+	service.lookPath = func(name string) (string, error) {
+		return "", fs.ErrNotExist
+	}
+
+	_, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{Scope: model.ScanScopeHost},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 1 {
+		t.Fatalf("expected 1 unknown, got %+v", unknowns)
+	}
+	if unknowns[0].Title != "Configured Nginx binary was not found" {
+		t.Fatalf("unexpected unknown %+v", unknowns[0])
+	}
+	if !strings.Contains(unknowns[0].Reason, "services.nginx.binary") {
+		t.Fatalf("expected config hint, got %+v", unknowns[0])
+	}
+}
+
+func TestSnapshotServiceReportsNginxFallbackWhenBinaryMissingFromPath(t *testing.T) {
+	t.Parallel()
+
+	configRoot := t.TempDir()
+	nginxConfigPath := filepath.Join(configRoot, "nginx", "shop.conf")
+	if err := os.MkdirAll(filepath.Dir(nginxConfigPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	writeTestFile(t, nginxConfigPath, "server { root /var/www/shop/public; }")
+
+	service := newTestSnapshotService()
+	service.commandsEnabled = true
+	service.nginxPatterns = []string{nginxConfigPath}
+	service.lookPath = func(name string) (string, error) {
+		return "", fs.ErrNotExist
+	}
+
+	_, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{Scope: model.ScanScopeHost},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 1 {
+		t.Fatalf("expected 1 unknown, got %+v", unknowns)
+	}
+	if unknowns[0].Title != "Nginx binary was not found on PATH" {
+		t.Fatalf("unexpected unknown %+v", unknowns[0])
+	}
+	if !strings.Contains(unknowns[0].Reason, "services.nginx.binary") {
+		t.Fatalf("expected config hint, got %+v", unknowns[0])
 	}
 }
 
@@ -290,6 +435,86 @@ func TestCollectArtifactRecordsSkipsLargeDependencyTrees(t *testing.T) {
 	}
 	if len(artifacts) != 1 || artifacts[0].Kind != model.ArtifactKindPublicPHPFile {
 		t.Fatalf("expected only public upload php artifact, got %+v", artifacts)
+	}
+}
+
+func TestCollectArtifactRecordsCapturesPublicPHPOutsideUploadPaths(t *testing.T) {
+	t.Parallel()
+
+	rootPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootPath, "public"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(public) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(rootPath, "public/index.php"), "<?php echo 'front';\n")
+	writeTestFile(t, filepath.Join(rootPath, "public/probe.php"), "<?php echo 'probe';\n")
+
+	service := newTestSnapshotService()
+	artifacts, unknowns := service.collectArtifactRecords(context.Background(), rootPath)
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+	if len(artifacts) != 1 || artifacts[0].Kind != model.ArtifactKindPublicPHPFile || artifacts[0].Path.RelativePath != "public/probe.php" {
+		t.Fatalf("expected only non-front-controller public php artifact, got %+v", artifacts)
+	}
+	if artifacts[0].UploadLikePath {
+		t.Fatalf("expected non-upload public php artifact, got %+v", artifacts[0])
+	}
+}
+
+func TestCollectArtifactRecordsCapturesAlternateExecutablePHPExtensions(t *testing.T) {
+	t.Parallel()
+
+	rootPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootPath, "public/uploads"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(public/uploads) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(rootPath, "storage/app"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(storage/app) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(rootPath, "public/shell.phtml"), "<?php echo 'shell';\n")
+	writeTestFile(t, filepath.Join(rootPath, "public/uploads/dropper.phar"), "<?php echo 'dropper';\n")
+	writeTestFile(t, filepath.Join(rootPath, "storage/app/persist.php5"), "<?php echo 'persist';\n")
+
+	service := newTestSnapshotService()
+	artifacts, unknowns := service.collectArtifactRecords(context.Background(), rootPath)
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+	if len(artifacts) != 3 {
+		t.Fatalf("expected 3 executable php-family artifacts, got %+v", artifacts)
+	}
+	if artifacts[0].Path.RelativePath != "public/shell.phtml" || artifacts[0].Kind != model.ArtifactKindPublicPHPFile {
+		t.Fatalf("expected public phtml artifact first, got %+v", artifacts)
+	}
+	if artifacts[1].Path.RelativePath != "public/uploads/dropper.phar" || !artifacts[1].UploadLikePath {
+		t.Fatalf("expected upload-like public phar artifact second, got %+v", artifacts)
+	}
+	if artifacts[2].Path.RelativePath != "storage/app/persist.php5" || artifacts[2].Kind != model.ArtifactKindWritablePHPFile {
+		t.Fatalf("expected writable php5 artifact third, got %+v", artifacts)
+	}
+}
+
+func TestCollectArtifactRecordsCapturesPublicSymlinkArtifacts(t *testing.T) {
+	t.Parallel()
+
+	rootPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootPath, "public"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(public) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(rootPath, "storage/app/private"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(storage/app/private) error = %v", err)
+	}
+	if err := os.Symlink(filepath.Join(rootPath, "storage/app/private"), filepath.Join(rootPath, "public/private-link")); err != nil {
+		t.Fatalf("Symlink(public/private-link) error = %v", err)
+	}
+
+	service := newTestSnapshotService()
+	artifacts, unknowns := service.collectArtifactRecords(context.Background(), rootPath)
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+	if len(artifacts) != 1 || artifacts[0].Kind != model.ArtifactKindPublicSymlink {
+		t.Fatalf("expected public symlink artifact, got %+v", artifacts)
 	}
 }
 

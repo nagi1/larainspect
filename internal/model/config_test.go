@@ -97,7 +97,7 @@ func TestOutputFormatHelpers(t *testing.T) {
 		t.Fatalf("NormalizeOutputFormat() = %q", got)
 	}
 
-	if !model.IsValidOutputFormat(model.OutputFormatTerminal) || !model.IsValidOutputFormat(model.OutputFormatJSON) {
+	if !model.IsValidOutputFormat(model.OutputFormatTerminal) || !model.IsValidOutputFormat(model.OutputFormatJSON) || !model.IsValidOutputFormat(model.OutputFormatMarkdown) {
 		t.Fatal("expected built-in output formats to be valid")
 	}
 
@@ -107,6 +107,31 @@ func TestOutputFormatHelpers(t *testing.T) {
 
 	if !(model.AuditConfig{Format: model.OutputFormatTerminal}).UsesTerminalOutput() {
 		t.Fatal("expected terminal config to use terminal output")
+	}
+
+	if got := (model.AuditConfig{ReportJSONPath: " /tmp/report.json "}).NormalizedReportJSONPath(); got != "/tmp/report.json" {
+		t.Fatalf("NormalizedReportJSONPath() = %q", got)
+	}
+	if got := (model.AuditConfig{ReportMarkdownPath: " /tmp/report.md "}).NormalizedReportMarkdownPath(); got != "/tmp/report.md" {
+		t.Fatalf("NormalizedReportMarkdownPath() = %q", got)
+	}
+	if got := (model.AuditConfig{ReportSARIFPath: " /tmp/report.sarif "}).NormalizedReportSARIFPath(); got != "/tmp/report.sarif" {
+		t.Fatalf("NormalizedReportSARIFPath() = %q", got)
+	}
+	if got := (model.AuditConfig{ReportHTMLPath: " /tmp/report.html "}).NormalizedReportHTMLPath(); got != "/tmp/report.html" {
+		t.Fatalf("NormalizedReportHTMLPath() = %q", got)
+	}
+	if got := (model.AuditConfig{DebugLogPath: " /tmp/debug.log "}).NormalizedDebugLogPath(); got != "/tmp/debug.log" {
+		t.Fatalf("NormalizedDebugLogPath() = %q", got)
+	}
+	if got := (model.AuditConfig{BaselinePath: " /tmp/baseline.json "}).NormalizedBaselinePath(); got != "/tmp/baseline.json" {
+		t.Fatalf("NormalizedBaselinePath() = %q", got)
+	}
+	if got := (model.AuditConfig{UpdateBaselinePath: " /tmp/update-baseline.json "}).NormalizedUpdateBaselinePath(); got != "/tmp/update-baseline.json" {
+		t.Fatalf("NormalizedUpdateBaselinePath() = %q", got)
+	}
+	if got := (model.AuditConfig{StoreDir: " /tmp/store "}).NormalizedStoreDir(); got != "/tmp/store" {
+		t.Fatalf("NormalizedStoreDir() = %q", got)
 	}
 }
 

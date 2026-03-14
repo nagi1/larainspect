@@ -10,6 +10,8 @@ import (
 
 const appValidationCheckID = "app.validation"
 
+var _ Check = AppValidationCheck{}
+
 type AppValidationCheck struct{}
 
 func init() {
@@ -18,6 +20,10 @@ func init() {
 
 func (AppValidationCheck) ID() string {
 	return appValidationCheckID
+}
+
+func (AppValidationCheck) Description() string {
+	return "Validate discovered Laravel applications and required project markers."
 }
 
 func (AppValidationCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
