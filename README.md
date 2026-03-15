@@ -99,9 +99,10 @@ The repository includes a deliberately vulnerable Laravel demo in [demo/README.m
 
 It is built for live demos and videos:
 
-- vulnerable and normal Docker images side by side
+- vulnerable and normal Ubuntu-based Docker images side by side
 - `larainspect` installed in each image through the same one-line installer shown in this README
 - ready-to-use config at `demo/larainspect.yaml` and `/etc/larainspect/config.yaml` inside the containers
+- package-managed Nginx, PHP-FPM, and Supervisor with UFW intentionally present but disabled for a familiar server layout
 - intentionally insecure Laravel source, public artifacts, Nginx, PHP-FPM, and Supervisor configs that map to real larainspect checks
 
 Fast path:

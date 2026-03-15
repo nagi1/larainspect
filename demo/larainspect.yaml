@@ -2,7 +2,7 @@ version: 1
 
 server:
   name: larainspect-demo
-  os: custom
+  os: ubuntu
 
 laravel:
   scope: host
@@ -19,9 +19,11 @@ services:
   php_fpm:
     enabled: true
     binaries:
-      - /usr/local/sbin/php-fpm
+      - /usr/sbin/php-fpm8.4
+      - /usr/sbin/php-fpm
     paths:
-      - "/usr/local/etc/php-fpm.d/*.conf"
+      - "/etc/php/8.4/fpm/pool.d/*.conf"
+      - "/etc/php/*/fpm/pool.d/*.conf"
   supervisor:
     enabled: true
     paths:

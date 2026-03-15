@@ -45,8 +45,9 @@ Each Docker image includes:
 - the `larainspect` binary at `/usr/local/bin/larainspect`
 - a ready-to-use config file at `/etc/larainspect/config.yaml`
 - the same config file inside the app at `/var/www/html/larainspect.yaml`
+- an Ubuntu-based, package-managed Nginx + PHP-FPM + Supervisor stack with UFW installed but disabled for a more familiar VPS-like layout
 
-The binary is installed during `docker build` using the same public one-line installer shown in the main project README. This keeps the demo closer to the public install experience while still shipping a ready-to-use container.
+The images use Ubuntu 25.04 so the demo can stay on distro-packaged PHP 8.4, Nginx, and Supervisor while still matching the locked Laravel dependencies in this fixture. The `larainspect` binary is installed during `docker build` using the same public one-line installer shown in the main project README.
 
 ## Prerequisites
 
@@ -73,6 +74,8 @@ This step installs larainspect in the image using:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nagi1/larainspect/master/install.sh | sh
 ```
+
+It also installs the web stack from Ubuntu packages and leaves UFW disabled in the image so the environment feels closer to a default VPS layout.
 
 3. Start the intentionally vulnerable stack.
 
@@ -164,7 +167,8 @@ Suggested flow for a YouTube demo:
 3. Show that `info.php`, public backups, and public environment backups are reachable.
 4. Run `larainspect audit --config /etc/larainspect/config.yaml`.
 5. Walk through source findings first, then Nginx, PHP-FPM, Supervisor, and filesystem findings.
-6. Start the normal container and run the same audit to show the contrast.
+6. Point out that the images use Ubuntu package paths and a disabled UFW state so the environment looks familiar before you compare normal versus vulnerable findings.
+7. Start the normal container and run the same audit to show the contrast.
 
 ## Stop And Clean Up
 
