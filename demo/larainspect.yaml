@@ -1,0 +1,48 @@
+version: 1
+
+server:
+  name: larainspect-demo
+  os: custom
+
+laravel:
+  scope: host
+  app_path: /var/www/html
+  scan_roots:
+    - /var/www
+
+services:
+  use_default_paths: false
+  nginx:
+    enabled: true
+    paths:
+      - "/etc/nginx/sites-available/default"
+  php_fpm:
+    enabled: true
+    binaries:
+      - /usr/local/sbin/php-fpm
+    paths:
+      - "/usr/local/etc/php-fpm.d/*.conf"
+  supervisor:
+    enabled: true
+    paths:
+      - "/etc/supervisor/conf.d/*.conf"
+  systemd:
+    enabled: false
+    paths: []
+
+output:
+  format: terminal
+  verbosity: normal
+  interactive: false
+  color: auto
+  screen_reader: false
+
+advanced:
+  command_timeout: 2s
+  max_output_bytes: 65536
+  worker_limit: 4
+
+rules:
+  enable: []
+  disable: []
+  custom_dirs: []

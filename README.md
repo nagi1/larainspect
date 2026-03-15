@@ -93,6 +93,28 @@ larainspect audit
 
 One command scans your server's filesystem permissions, Nginx config, PHP-FPM pools, cron jobs, queue workers, and your Laravel app source for security misconfigurations — then gives you a clear, prioritized report.
 
+## Demo Environment
+
+The repository includes a deliberately vulnerable Laravel demo in [demo/README.md](demo/README.md).
+
+It is built for live demos and videos:
+
+- vulnerable and normal Docker images side by side
+- `larainspect` installed in each image through the same one-line installer shown in this README
+- ready-to-use config at `demo/larainspect.yaml` and `/etc/larainspect/config.yaml` inside the containers
+- intentionally insecure Laravel source, public artifacts, Nginx, PHP-FPM, and Supervisor configs that map to real larainspect checks
+
+Fast path:
+
+```bash
+cd demo
+docker compose build
+docker compose up -d vulnerable
+docker compose exec vulnerable larainspect audit --config /etc/larainspect/config.yaml
+```
+
+For the full step-by-step walkthrough and presenter-friendly commands, see [demo/README.md](demo/README.md).
+
 ---
 
 ## Usage
@@ -309,8 +331,8 @@ Planned work to expand coverage, improve usability, and make larainspect easier 
 - [ ] Add CI build pipeline with automated release workflows
 - [ ] Build a project landing page and homepage for better discoverability
 - [ ] Create an introduction video demonstrating the tool's usage and value
-- [ ] Add a vulnerable demo Laravel project for end-to-end testing and live examples
-- [ ] Include intentionally vulnerable Nginx and PHP-FPM configurations in the demo environment
+- [x] Add a vulnerable demo Laravel project for end-to-end testing and live examples
+- [x] Include intentionally vulnerable Nginx and PHP-FPM configurations in the demo environment
 - [ ] Add an HTML report format for shareable audit output
 - [ ] Add richer remediation guidance per finding with concrete fix steps
 - [ ] Enhance the README with more examples, screenshots, and user guides
