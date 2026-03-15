@@ -13,6 +13,8 @@
 
 Prefer a quick overview before installing or running it? Watch the video walkthrough first.
 
+🔴 **YouTube Video Walkthrough**
+
 [![Watch the larainspect walkthrough on YouTube](https://img.youtube.com/vi/VngYhaj8Z9w/maxresdefault.jpg)](https://www.youtube.com/watch?v=VngYhaj8Z9w)
 
 ## Install
