@@ -13,7 +13,7 @@
 
 Prefer a quick overview before installing or running it? Watch the video walkthrough first.
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/VngYhaj8Z9w" title="larainspect walkthrough" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+[![Watch the larainspect walkthrough on YouTube](https://img.youtube.com/vi/VngYhaj8Z9w/maxresdefault.jpg)](https://www.youtube.com/watch?v=VngYhaj8Z9w)
 
 ## Install
 
