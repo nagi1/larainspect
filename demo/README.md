@@ -155,7 +155,7 @@ Inspect the bundled config:
 docker compose exec vulnerable cat /etc/larainspect/config.yaml
 ```
 
-## Presenter Notes
+## Presenter Notes (for anyone wants to demo the tool)
 
 Suggested flow for a YouTube demo:
 
