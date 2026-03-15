@@ -9,6 +9,12 @@
 
 ---
 
+## Watch First
+
+[![Watch the larainspect walkthrough on YouTube](https://img.youtube.com/vi/VngYhaj8Z9w/maxresdefault.jpg)](https://www.youtube.com/watch?v=VngYhaj8Z9w)
+
+Prefer a quick overview before installing or running it? Watch the video walkthrough first.
+
 ## Install
 
 Full install, upgrade, verify, and uninstall instructions live in [docs/install.md](/Users/nagi/code/larainspect/docs/install.md).
