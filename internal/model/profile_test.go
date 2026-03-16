@@ -169,3 +169,32 @@ func TestProfileHelpersNormalizeConfiguredCommandPaths(t *testing.T) {
 		t.Fatalf("NormalizedSupervisorBinary() = %q", got)
 	}
 }
+
+func TestProfileHelpersNormalizeConfiguredIdentities(t *testing.T) {
+	t.Parallel()
+
+	config := model.DefaultAuditConfig()
+	config.Identities = model.IdentityConfig{
+		DeployUsers:   []string{" Forge ", "forge", "deploy"},
+		RuntimeUsers:  []string{"www", "WWW", "php"},
+		RuntimeGroups: []string{"www", " www ", "php"},
+		WebUsers:      []string{"www-data", "WWW-DATA"},
+		WebGroups:     []string{"www-data", " www-data "},
+	}
+
+	if got := config.NormalizedDeployUsers(); len(got) != 2 || got[0] != "deploy" || got[1] != "Forge" {
+		t.Fatalf("NormalizedDeployUsers() = %+v", got)
+	}
+	if got := config.NormalizedRuntimeUsers(); len(got) != 2 || got[0] != "php" || got[1] != "www" {
+		t.Fatalf("NormalizedRuntimeUsers() = %+v", got)
+	}
+	if got := config.NormalizedRuntimeGroups(); len(got) != 2 || got[0] != "php" || got[1] != "www" {
+		t.Fatalf("NormalizedRuntimeGroups() = %+v", got)
+	}
+	if got := config.NormalizedWebUsers(); len(got) != 1 || got[0] != "www-data" {
+		t.Fatalf("NormalizedWebUsers() = %+v", got)
+	}
+	if got := config.NormalizedWebGroups(); len(got) != 1 || got[0] != "www-data" {
+		t.Fatalf("NormalizedWebGroups() = %+v", got)
+	}
+}

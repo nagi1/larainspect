@@ -3,12 +3,14 @@ package views
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nagi1/larainspect/internal/model"
 	"github.com/nagi1/larainspect/internal/tui/components"
 	"github.com/nagi1/larainspect/internal/tui/theme"
@@ -63,9 +65,10 @@ type ResultsView struct {
 	detail *components.FindingDetail
 
 	// Layout
-	width      int
-	height     int
-	focusPanel int // 0 = table, 1 = detail
+	width            int
+	height           int
+	focusPanel       int // 0 = table, 1 = detail
+	horizontalOffset int
 
 	// Key bindings (local)
 	tabKey  key.Binding
@@ -120,6 +123,9 @@ func (v *ResultsView) SetSize(w, h int) {
 
 	v.table.SetWidth(tableW)
 	v.table.SetHeight(bodyH - 2)
+	if v.horizontalOffset > v.maxTableHorizontalOffset() {
+		v.horizontalOffset = v.maxTableHorizontalOffset()
+	}
 	v.syncPanelFocus()
 	v.detail.SetSize(detailW, bodyH)
 }
@@ -173,8 +179,8 @@ func (v *ResultsView) tableRows(columns []table.Column) []table.Row {
 			theme.SeverityLabel(f.Severity),
 			classLabel(f.Class),
 			string(f.Confidence),
-			truncate(f.Title, columns[3].Width-2),
-			truncate(f.CheckID, columns[4].Width-2),
+			f.Title,
+			f.CheckID,
 		})
 	}
 
@@ -185,20 +191,30 @@ func (v *ResultsView) tableRows(columns []table.Column) []table.Row {
 func (v *ResultsView) adaptiveColumns() []table.Column {
 	tableRatio := v.tableRatio()
 	availW := int(float64(v.width)*tableRatio) - 6
-
 	if availW < 40 {
 		availW = 40
 	}
 
-	// Allocate: severity 10, class 10, confidence 10, title remainder, check 16
-	sevW := 10
-	classW := 10
-	confW := 10
-	checkW := 16
-	titleW := availW - sevW - classW - confW - checkW
-	if titleW < 12 {
-		titleW = 12
+	sevW := ansi.StringWidth("Severity")
+	classW := ansi.StringWidth("Class")
+	confW := ansi.StringWidth("Confidence")
+	titleW := ansi.StringWidth("Title")
+	checkW := ansi.StringWidth("Check ID")
+
+	for _, finding := range v.findings {
+		sevW = maxInt(sevW, ansi.StringWidth(theme.SeverityLabel(finding.Severity)))
+		classW = maxInt(classW, ansi.StringWidth(classLabel(finding.Class)))
+		confW = maxInt(confW, ansi.StringWidth(string(finding.Confidence)))
+		titleW = maxInt(titleW, ansi.StringWidth(finding.Title))
+		checkW = maxInt(checkW, ansi.StringWidth(finding.CheckID))
 	}
+
+	sevW = maxInt(sevW, 8)
+	classW = maxInt(classW, 10)
+	confW = maxInt(confW, 10)
+	titleW = maxInt(titleW, 12)
+	checkW = maxInt(checkW, 16)
+	titleW = maxInt(titleW, availW-sevW-classW-confW-checkW)
 
 	return []table.Column{
 		{Title: "Severity", Width: sevW},
@@ -264,6 +280,21 @@ func (v *ResultsView) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	if v.focusPanel == 0 {
+		switch msg.Type {
+		case tea.KeyLeft:
+			v.shiftTableHorizontal(-8)
+			return nil
+		case tea.KeyRight:
+			v.shiftTableHorizontal(8)
+			return nil
+		case tea.KeyHome:
+			v.horizontalOffset = 0
+			return nil
+		case tea.KeyEnd:
+			v.horizontalOffset = v.maxTableHorizontalOffset()
+			return nil
+		}
+
 		var cmd tea.Cmd
 		v.table, cmd = v.table.Update(msg)
 		idx := v.table.Cursor()
@@ -290,8 +321,16 @@ func (v *ResultsView) View(width, height int) string {
 	if v.sortAscending {
 		sortDir = "↑"
 	}
-	sortInfo := v.theme.Muted.Render(fmt.Sprintf("  Sorted by: %s %s  |  Focus: %s  |  Tab switch  |  S sort  |  ↑↓ navigate  |  ←→ pan detail",
-		v.sortColumn.String(), sortDir, panelName(v.focusPanel)))
+	panHint := "←→ pan focused  |  Home/End"
+	if v.focusPanel == 0 {
+		if maxOffset := v.maxTableHorizontalOffset(); maxOffset > 0 {
+			panHint = fmt.Sprintf("←→ pan findings (%d/%d)  |  Home/End", v.horizontalOffset, maxOffset)
+		} else {
+			panHint = "←→ pan findings: none"
+		}
+	}
+	sortInfo := v.theme.Muted.Render(fmt.Sprintf("  Sorted by: %s %s  |  Focus: %s  |  Tab switch  |  S sort  |  ↑↓ navigate  |  %s",
+		v.sortColumn.String(), sortDir, panelName(v.focusPanel), panHint))
 
 	tableView := v.renderTable()
 	detailView := v.detail.View()
@@ -390,13 +429,22 @@ func interleave(items []string, sep string) []string {
 func (v *ResultsView) renderTable() string {
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(v.theme.Colors.Border)
+		BorderForeground(v.theme.Colors.Border).
+		Width(v.table.Width()).
+		Height(v.bodyHeight())
 
 	if v.focusPanel == 0 {
 		border = border.BorderForeground(v.theme.Colors.Primary)
 	}
 
-	return border.Render(v.table.View())
+	contentWidth := maxInt(1, v.table.Width()-2)
+	renderedLines := strings.Split(v.table.View(), "\n")
+	visibleLines := make([]string, 0, len(renderedLines))
+	for _, line := range renderedLines {
+		visibleLines = append(visibleLines, ansi.Cut(line, v.horizontalOffset, v.horizontalOffset+contentWidth))
+	}
+
+	return border.Render(strings.Join(visibleLines, "\n"))
 }
 
 func panelName(idx int) string {
@@ -424,6 +472,32 @@ func (v *ResultsView) syncPanelFocus() {
 
 	v.table.Blur()
 	v.detail.SetFocused(true)
+}
+
+func (v *ResultsView) shiftTableHorizontal(delta int) {
+	nextOffset := v.horizontalOffset + delta
+	switch {
+	case nextOffset < 0:
+		nextOffset = 0
+	case nextOffset > v.maxTableHorizontalOffset():
+		nextOffset = v.maxTableHorizontalOffset()
+	}
+
+	if nextOffset == v.horizontalOffset {
+		return
+	}
+
+	v.horizontalOffset = nextOffset
+}
+
+func (v *ResultsView) maxTableHorizontalOffset() int {
+	visibleWidth := maxInt(1, v.table.Width()-2)
+	maxWidth := 0
+	for _, line := range strings.Split(v.table.View(), "\n") {
+		maxWidth = maxInt(maxWidth, ansi.StringWidth(line))
+	}
+
+	return maxInt(0, maxWidth-visibleWidth)
 }
 
 func truncate(s string, max int) string {

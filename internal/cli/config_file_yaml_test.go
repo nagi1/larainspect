@@ -93,6 +93,40 @@ func TestLoadAuditConfigFileYAMLParsesSimpleSections(t *testing.T) {
 	}
 }
 
+func TestLoadAuditConfigFileYAMLParsesIdentitiesSection(t *testing.T) {
+
+	configPath := filepath.Join(t.TempDir(), "larainspect.yaml")
+	writeConfigFileForTest(t, configPath, strings.Join([]string{
+		"version: 1",
+		"identities:",
+		"  deploy_users:",
+		"    - forge",
+		"  runtime_users:",
+		"    - forge",
+		"  runtime_groups:",
+		"    - forge",
+		"  web_users:",
+		"    - www-data",
+		"  web_groups:",
+		"    - www-data",
+	}, "\n"))
+
+	config, err := loadAuditConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("loadAuditConfigFile() error = %v", err)
+	}
+
+	if got := config.NormalizedDeployUsers(); len(got) != 1 || got[0] != "forge" {
+		t.Fatalf("expected deploy users, got %+v", got)
+	}
+	if got := config.NormalizedRuntimeUsers(); len(got) != 1 || got[0] != "forge" {
+		t.Fatalf("expected runtime users, got %+v", got)
+	}
+	if got := config.NormalizedWebUsers(); len(got) != 1 || got[0] != "www-data" {
+		t.Fatalf("expected web users, got %+v", got)
+	}
+}
+
 func TestLoadAuditConfigFileYAMLSupportsLegacySections(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "larainspect.yaml")

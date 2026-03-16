@@ -358,6 +358,7 @@ type AuditConfig struct {
 	ScanRoots          []string
 	ColorMode          ColorMode
 	ScreenReader       bool
+	Identities         IdentityConfig
 	Profile            HostProfile
 	Rules              RuleConfig
 	VulnCheck          bool

@@ -20,6 +20,7 @@ type fileConfig struct {
 	Version  *int                `json:"version,omitempty" yaml:"version,omitempty"`
 	Server   *fileServerConfig   `json:"server,omitempty" yaml:"server,omitempty"`
 	Laravel  *fileLaravelConfig  `json:"laravel,omitempty" yaml:"laravel,omitempty"`
+	Identities *fileIdentitiesConfig `json:"identities,omitempty" yaml:"identities,omitempty"`
 	Services *fileServicesConfig `json:"services,omitempty" yaml:"services,omitempty"`
 	Output   *fileOutputConfig   `json:"output,omitempty" yaml:"output,omitempty"`
 	Advanced *fileAdvancedConfig `json:"advanced,omitempty" yaml:"advanced,omitempty"`
@@ -39,6 +40,14 @@ type fileLaravelConfig struct {
 	Scope     *string  `json:"scope,omitempty" yaml:"scope,omitempty"`
 	AppPath   *string  `json:"app_path,omitempty" yaml:"app_path,omitempty"`
 	ScanRoots []string `json:"scan_roots,omitempty" yaml:"scan_roots,omitempty"`
+}
+
+type fileIdentitiesConfig struct {
+	DeployUsers   []string `json:"deploy_users,omitempty" yaml:"deploy_users,omitempty"`
+	RuntimeUsers  []string `json:"runtime_users,omitempty" yaml:"runtime_users,omitempty"`
+	RuntimeGroups []string `json:"runtime_groups,omitempty" yaml:"runtime_groups,omitempty"`
+	WebUsers      []string `json:"web_users,omitempty" yaml:"web_users,omitempty"`
+	WebGroups     []string `json:"web_groups,omitempty" yaml:"web_groups,omitempty"`
 }
 
 type fileServicesConfig struct {
@@ -266,6 +275,9 @@ func applyFileConfig(path string, parsedConfig fileConfig) (model.AuditConfig, e
 	if parsedConfig.Laravel != nil {
 		applyLaravelSection(&config, *parsedConfig.Laravel)
 	}
+	if parsedConfig.Identities != nil {
+		applyIdentitiesSection(&config, *parsedConfig.Identities)
+	}
 	if parsedConfig.Services != nil {
 		applyServicesSection(&config, *parsedConfig.Services)
 	}
@@ -300,6 +312,14 @@ func applyLaravelSection(config *model.AuditConfig, laravelConfig fileLaravelCon
 	if laravelConfig.ScanRoots != nil {
 		config.Profile.Paths.AppScanRoots = cloneStrings(laravelConfig.ScanRoots)
 	}
+}
+
+func applyIdentitiesSection(config *model.AuditConfig, identitiesConfig fileIdentitiesConfig) {
+	config.Identities.DeployUsers = cloneStrings(identitiesConfig.DeployUsers)
+	config.Identities.RuntimeUsers = cloneStrings(identitiesConfig.RuntimeUsers)
+	config.Identities.RuntimeGroups = cloneStrings(identitiesConfig.RuntimeGroups)
+	config.Identities.WebUsers = cloneStrings(identitiesConfig.WebUsers)
+	config.Identities.WebGroups = cloneStrings(identitiesConfig.WebGroups)
 }
 
 func applyServicesSection(config *model.AuditConfig, servicesConfig fileServicesConfig) {

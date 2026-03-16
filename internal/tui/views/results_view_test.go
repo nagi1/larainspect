@@ -173,6 +173,47 @@ func TestResultsViewHandleKeyTableNavigation(t *testing.T) {
 	view.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
 }
 
+func TestResultsViewHandleKeyFindingsPanelHorizontalPan(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{
+		Findings: []model.Finding{
+			{
+				Title:      strings.Repeat("ExtremelyLongFindingTitle", 3),
+				Severity:   model.SeverityHigh,
+				Class:      model.FindingClassDirect,
+				CheckID:    "filesystem.permissions.world.writable.storage.logs",
+				Confidence: model.ConfidenceConfirmed,
+			},
+		},
+		Duration: time.Second,
+	})
+	view.SetSize(84, 24)
+	view.focusPanel = 0
+	view.syncPanelFocus()
+
+	if view.maxTableHorizontalOffset() == 0 {
+		t.Fatal("expected findings table to have horizontal overflow")
+	}
+
+	initial := view.renderTable()
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyRight})
+	if view.horizontalOffset == 0 {
+		t.Fatal("expected right key to increase findings horizontal offset")
+	}
+	if view.renderTable() == initial {
+		t.Fatal("expected findings table rendering to change after horizontal pan")
+	}
+
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyEnd})
+	if view.horizontalOffset != view.maxTableHorizontalOffset() {
+		t.Fatalf("horizontalOffset = %d, want %d after End", view.horizontalOffset, view.maxTableHorizontalOffset())
+	}
+
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyHome})
+	if view.horizontalOffset != 0 {
+		t.Fatalf("horizontalOffset = %d, want 0 after Home", view.horizontalOffset)
+	}
+}
+
 func TestResultsViewHandleKeyDetailPanel(t *testing.T) {
 	view := NewResultsView(testTheme(), ResultsData{
 		Findings: []model.Finding{
@@ -293,6 +334,9 @@ func TestResultsViewViewShowsNavigationHints(t *testing.T) {
 	}
 	if !strings.Contains(out, "Pan") {
 		t.Error("results view should show detail pan hint")
+	}
+	if !strings.Contains(out, "Home/End") {
+		t.Error("results view should show Home/End pan hint")
 	}
 }
 

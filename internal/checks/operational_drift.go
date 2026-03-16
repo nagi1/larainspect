@@ -79,9 +79,9 @@ func (correlation appDriftCorrelation) qualifiesForCorrelation(workflowCount int
 	return correlation.signals == 1 && correlation.critical && workflowCount > 0
 }
 
-func collectAppDriftCorrelation(app model.LaravelApp, snapshot model.Snapshot) appDriftCorrelation {
+func collectAppDriftCorrelation(app model.LaravelApp, snapshot model.Snapshot, config model.AuditConfig) appDriftCorrelation {
 	correlation := newAppDriftCorrelation(app)
-	runtimeIdentities := collectAppRuntimeIdentities(app, snapshot)
+	runtimeIdentities := collectAppRuntimeIdentities(app, snapshot, config)
 
 	if len(runtimeIdentities.Users) > 0 || len(runtimeIdentities.Groups) > 0 {
 		correlation.addEvidence(runtimeIdentityEvidence(runtimeIdentities)...)
@@ -234,8 +234,8 @@ func artifactLooksLikeRecoveryArtifact(artifact model.ArtifactRecord) bool {
 		strings.HasSuffix(relativePath, ".tgz")
 }
 
-func buildPostDeployDriftFinding(app model.LaravelApp, snapshot model.Snapshot) (model.Finding, bool) {
-	correlation := collectAppDriftCorrelation(app, snapshot)
+func buildPostDeployDriftFinding(app model.LaravelApp, snapshot model.Snapshot, config model.AuditConfig) (model.Finding, bool) {
+	correlation := collectAppDriftCorrelation(app, snapshot, config)
 	deployRecords := operationalRecordsForApp(app, snapshot, commandLooksLikeDeploymentWorkflow)
 	if !correlation.qualifiesForCorrelation(len(deployRecords)) {
 		return model.Finding{}, false
@@ -259,13 +259,13 @@ func buildPostDeployDriftFinding(app model.LaravelApp, snapshot model.Snapshot) 
 	}, true
 }
 
-func buildPostRestoreDriftFinding(app model.LaravelApp, snapshot model.Snapshot) (model.Finding, bool) {
+func buildPostRestoreDriftFinding(app model.LaravelApp, snapshot model.Snapshot, config model.AuditConfig) (model.Finding, bool) {
 	restoreRecords := operationalRecordsForApp(app, snapshot, commandLooksLikeRecoveryWorkflow)
 	if len(restoreRecords) == 0 {
 		return model.Finding{}, false
 	}
 
-	correlation := collectAppDriftCorrelation(app, snapshot)
+	correlation := collectAppDriftCorrelation(app, snapshot, config)
 	collectRecoveryArtifactDrift(app, &correlation)
 	if !correlation.qualifiesForCorrelation(len(restoreRecords)) {
 		return model.Finding{}, false

@@ -25,9 +25,9 @@ func (OperationalHardeningCheck) Description() string {
 	return "Inspect host and service hardening controls around the Laravel stack."
 }
 
-func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
+func (OperationalHardeningCheck) Run(_ context.Context, execution model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
-	operationalPrincipals := collectOperationalPrincipals(snapshot)
+	operationalPrincipals := collectOperationalPrincipals(snapshot, execution.Config)
 	sshAccountsByUser := authorizedSSHAccountsByUser(snapshot.SSHAccounts)
 
 	for _, sshConfig := range snapshot.SSHConfigs {
@@ -69,7 +69,7 @@ func (OperationalHardeningCheck) Run(_ context.Context, _ model.ExecutionContext
 	}
 
 	findings = append(findings, collectSSHAccountPermissionFindings(snapshot.SSHAccounts)...)
-	findings = append(findings, collectRuntimeSSHAccessFindings(snapshot, sshAccountsByUser)...)
+	findings = append(findings, collectRuntimeSSHAccessFindings(snapshot, sshAccountsByUser, execution.Config)...)
 
 	for _, rule := range snapshot.SudoRules {
 		if !sudoRuleTargetsOperationalPrincipal(rule, operationalPrincipals) {

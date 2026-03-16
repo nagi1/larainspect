@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,7 +13,6 @@ import (
 	"github.com/nagi1/larainspect/internal/runner"
 	"github.com/nagi1/larainspect/internal/ux"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 const defaultGeneratedConfigPath = "larainspect.yaml"
@@ -40,20 +38,22 @@ type presetDetection struct {
 }
 
 type hostInspector struct {
-	getwd    func() (string, error)
-	hostname func() (string, error)
-	stat     func(string) (fs.FileInfo, error)
-	glob     func(string) ([]string, error)
-	readFile func(string) ([]byte, error)
+	getwd       func() (string, error)
+	hostname    func() (string, error)
+	stat        func(string) (fs.FileInfo, error)
+	glob        func(string) ([]string, error)
+	readFile    func(string) ([]byte, error)
+	lookupOwner func(string) (string, error)
 }
 
 func newHostInspector() hostInspector {
 	return hostInspector{
-		getwd:    os.Getwd,
-		hostname: os.Hostname,
-		stat:     os.Stat,
-		glob:     filepath.Glob,
-		readFile: os.ReadFile,
+		getwd:       os.Getwd,
+		hostname:    os.Hostname,
+		stat:        os.Stat,
+		glob:        filepath.Glob,
+		readFile:    os.ReadFile,
+		lookupOwner: lookupPathOwnerName,
 	}
 }
 
@@ -124,6 +124,12 @@ func runInitCommandWithInspector(stdout io.Writer, stderr io.Writer, options gen
 	}
 
 	config := buildGeneratedConfig(preset, inspector, generatedAnswers{})
+	identities, identityErr := resolveGeneratedIdentityConfig(strings.NewReader(""), stderr, preset, inspector, config)
+	if identityErr != nil {
+		return writeGeneratedConfigUsageError(stderr, identityErr, printInitHelp)
+	}
+	config.Identities = identities
+
 	if err := writeGeneratedConfigFile(resolveGeneratedConfigPath(options.path), config, "init", stdout); err != nil {
 		fmt.Fprintln(stderr, err)
 		return int(model.ExitCodeUsageError)
@@ -168,6 +174,12 @@ func runSetupCommandWithInspector(stdin io.Reader, stdout io.Writer, stderr io.W
 	}
 
 	config := buildGeneratedConfig(preset, inspector, answers)
+	identities, identityErr := resolveGeneratedIdentityConfig(stdin, stderr, preset, inspector, config)
+	if identityErr != nil {
+		return writeGeneratedConfigUsageError(stderr, identityErr, printSetupHelp)
+	}
+	config.Identities = identities
+
 	if err := writeGeneratedConfigFile(resolveGeneratedConfigPath(options.path), config, "setup", stdout); err != nil {
 		fmt.Fprintln(stderr, err)
 		return int(model.ExitCodeUsageError)
@@ -262,12 +274,15 @@ func buildGeneratedConfig(preset configPreset, inspector hostInspector, answers 
 		config.Profile.Paths.AppScanRoots = []string{"/var/www", "/srv/www", "/home"}
 	case presetAAPanel:
 		config.Profile.Paths.AppScanRoots = []string{"/www/wwwroot"}
-		config.Profile.Commands.NginxBinary = firstExistingPathOrDefault(inspector, "/www/server/nginx/sbin/nginx",
+		config.Profile.Commands.NginxBinary = firstExistingPathOrDefault(
+			inspector,
+			"/www/server/nginx/sbin/nginx",
 			"/www/server/nginx/sbin/nginx",
 			"/usr/sbin/nginx",
 			"/usr/local/nginx/sbin/nginx",
 		)
-		config.Profile.Commands.SupervisorBinary = firstExistingPath(inspector,
+		config.Profile.Commands.SupervisorBinary = firstExistingPath(
+			inspector,
 			"/www/server/panel/pyenv/bin/supervisord",
 			"/usr/bin/supervisord",
 			"/usr/local/bin/supervisord",
@@ -286,13 +301,15 @@ func buildGeneratedConfig(preset configPreset, inspector hostInspector, answers 
 			"/opt/cpanel/ea-php*/root/etc/php-fpm.d/*.conf",
 			"/opt/cpanel/ea-php*/root/usr/etc/php-fpm.d/*.conf",
 		}
-		config.Profile.Commands.PHPFPMBinaries = append(globMatches(inspector, "/opt/cpanel/ea-php*/root/usr/sbin/php-fpm"), globMatches(inspector, "/usr/local/bin/ea-php*-php-fpm")...)
+		config.Profile.Commands.PHPFPMBinaries = append(
+			globMatches(inspector, "/opt/cpanel/ea-php*/root/usr/sbin/php-fpm"),
+			globMatches(inspector, "/usr/local/bin/ea-php*-php-fpm")...,
+		)
 	default:
 		config.Profile.Paths.AppScanRoots = defaultScanRoots(presetVPS)
 	}
 
 	config.Profile.Commands.PHPFPMBinaries = dedupeSorted(config.Profile.Commands.PHPFPMBinaries)
-
 	return config
 }
 
@@ -490,6 +507,7 @@ func dedupeSorted(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
+
 	seen := make(map[string]struct{}, len(values))
 	unique := make([]string, 0, len(values))
 	for _, value := range values {
@@ -504,6 +522,7 @@ func dedupeSorted(values []string) []string {
 		seen[clean] = struct{}{}
 		unique = append(unique, clean)
 	}
+
 	sort.Strings(unique)
 	return unique
 }
@@ -536,126 +555,6 @@ func resolveGeneratedConfigPath(path string) string {
 		trimmed = defaultGeneratedConfigPath
 	}
 	return filepath.Clean(trimmed)
-}
-
-func writeGeneratedConfigFile(path string, config model.AuditConfig, mode string, stdout io.Writer) error {
-	if err := ensureGeneratedConfigPath(path); err != nil {
-		return err
-	}
-
-	contents, err := renderGeneratedConfigYAML(config, mode)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, contents, 0o644); err != nil {
-		return err
-	}
-
-	_, err = fmt.Fprintf(stdout, "Wrote %s\n", path)
-	return err
-}
-
-func ensureGeneratedConfigPath(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("config file %q already exists", path)
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-
-	directory := filepath.Dir(path)
-	if directory == "." {
-		return nil
-	}
-	return os.MkdirAll(directory, 0o755)
-}
-
-func renderGeneratedConfigYAML(config model.AuditConfig, mode string) ([]byte, error) {
-	timeout := config.CommandTimeout.String()
-	maxOutput := config.MaxOutputBytes
-	workerLimit := config.WorkerLimit
-	format := config.Format
-	verbosity := string(config.Verbosity)
-	scope := string(config.Scope)
-	interactive := config.Interactive
-	color := string(config.ColorMode)
-	screenReader := config.ScreenReader
-	useDefaultPaths := config.Profile.Paths.UseDefaultPatterns
-	discoverNginx := config.Profile.Switches.DiscoverNginx
-	discoverPHPFPM := config.Profile.Switches.DiscoverPHPFPM
-	discoverMySQL := config.Profile.Switches.DiscoverMySQL
-	discoverSupervisor := config.Profile.Switches.DiscoverSupervisor
-	discoverSystemd := config.Profile.Switches.DiscoverSystemd
-
-	fileCfg := fileConfig{
-		Version: ptr(1),
-		Server: &fileServerConfig{
-			Name: maybePtr(config.Profile.Name),
-			OS:   maybePtr(config.Profile.OSFamily),
-		},
-		Laravel: &fileLaravelConfig{
-			Scope:     &scope,
-			AppPath:   maybePtr(config.AppPath),
-			ScanRoots: cloneStrings(config.Profile.Paths.AppScanRoots),
-		},
-		Services: &fileServicesConfig{
-			UseDefaultPaths: &useDefaultPaths,
-			Nginx: &fileServicePaths{
-				Enabled: &discoverNginx,
-				Binary:  maybePtr(config.Profile.Commands.NginxBinary),
-				Paths:   cloneStrings(config.Profile.Paths.NginxConfigPatterns),
-			},
-			PHPFPM: &fileServicePaths{
-				Enabled:  &discoverPHPFPM,
-				Binaries: cloneStrings(config.Profile.Commands.PHPFPMBinaries),
-				Paths:    cloneStrings(config.Profile.Paths.PHPFPMPoolPatterns),
-			},
-			MySQL: &fileServicePaths{
-				Enabled: &discoverMySQL,
-				Paths:   cloneStrings(config.Profile.Paths.MySQLConfigPatterns),
-			},
-			Supervisor: &fileServicePaths{
-				Enabled: &discoverSupervisor,
-				Binary:  maybePtr(config.Profile.Commands.SupervisorBinary),
-				Paths:   cloneStrings(config.Profile.Paths.SupervisorConfigPatterns),
-			},
-			Systemd: &fileServicePaths{
-				Enabled: &discoverSystemd,
-				Paths:   cloneStrings(config.Profile.Paths.SystemdUnitPatterns),
-			},
-		},
-		Output: &fileOutputConfig{
-			Format:       &format,
-			Verbosity:    &verbosity,
-			Interactive:  &interactive,
-			Color:        &color,
-			ScreenReader: &screenReader,
-		},
-		Advanced: &fileAdvancedConfig{
-			CommandTimeout: &timeout,
-			MaxOutputBytes: &maxOutput,
-			WorkerLimit:    &workerLimit,
-		},
-	}
-
-	encoded, err := yaml.Marshal(fileCfg)
-	if err != nil {
-		return nil, err
-	}
-
-	header := fmt.Sprintf("# Generated by larainspect %s. Review paths and service binaries before the first audit.\n\n", mode)
-	return append([]byte(header), encoded...), nil
-}
-
-func maybePtr(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
-func ptr[T any](value T) *T {
-	return &value
 }
 
 func printInitHelp(writer io.Writer) {

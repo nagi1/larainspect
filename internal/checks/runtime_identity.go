@@ -1,7 +1,6 @@
 package checks
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/nagi1/larainspect/internal/model"
@@ -13,11 +12,18 @@ type appRuntimeIdentities struct {
 	Pools  []model.PHPFPMPool
 }
 
-func collectAppRuntimeIdentities(app model.LaravelApp, snapshot model.Snapshot) appRuntimeIdentities {
+func collectAppRuntimeIdentities(app model.LaravelApp, snapshot model.Snapshot, config model.AuditConfig) appRuntimeIdentities {
 	identities := appRuntimeIdentities{
 		Users:  []string{},
 		Groups: []string{},
 		Pools:  matchedPHPFPMPoolsForApp(app, snapshot.NginxSites, snapshot.PHPFPMPools),
+	}
+
+	for _, user := range config.NormalizedRuntimeUsers() {
+		identities.Users = appendNormalizedUnique(identities.Users, user)
+	}
+	for _, group := range config.NormalizedRuntimeGroups() {
+		identities.Groups = appendNormalizedUnique(identities.Groups, group)
 	}
 
 	for _, pool := range identities.Pools {
@@ -75,7 +81,7 @@ func matchedPHPFPMPoolsForApp(app model.LaravelApp, nginxSites []model.NginxSite
 
 func appendNormalizedUnique(values []string, rawValue string) []string {
 	normalizedValue := strings.TrimSpace(rawValue)
-	if normalizedValue == "" || slices.Contains(values, normalizedValue) {
+	if normalizedValue == "" || stringSliceContainsFold(values, normalizedValue) {
 		return values
 	}
 
@@ -91,11 +97,11 @@ func pathWritableByRuntimeIdentity(pathRecord model.PathRecord, identities appRu
 		return true
 	}
 
-	if pathRecord.IsOwnerWritable() && slices.Contains(identities.Users, strings.TrimSpace(pathRecord.OwnerName)) {
+	if pathRecord.IsOwnerWritable() && stringSliceContainsFold(identities.Users, strings.TrimSpace(pathRecord.OwnerName)) {
 		return true
 	}
 
-	if pathRecord.IsGroupWritable() && slices.Contains(identities.Groups, strings.TrimSpace(pathRecord.GroupName)) {
+	if pathRecord.IsGroupWritable() && stringSliceContainsFold(identities.Groups, strings.TrimSpace(pathRecord.GroupName)) {
 		return true
 	}
 

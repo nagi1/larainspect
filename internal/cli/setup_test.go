@@ -194,6 +194,54 @@ func TestRunSetupCommandPromptsWhenDetectionFails(t *testing.T) {
 	}
 }
 
+func TestGuessGeneratedIdentityConfigUsesForgeDefaults(t *testing.T) {
+	t.Parallel()
+
+	identities := guessGeneratedIdentityConfig(presetForge, hostInspector{}, model.AuditConfig{})
+
+	if len(identities.DeployUsers) != 1 || identities.DeployUsers[0] != "forge" {
+		t.Fatalf("expected forge deploy user, got %+v", identities.DeployUsers)
+	}
+	if len(identities.RuntimeUsers) != 1 || identities.RuntimeUsers[0] != "forge" {
+		t.Fatalf("expected forge runtime user, got %+v", identities.RuntimeUsers)
+	}
+	if len(identities.WebUsers) != 1 || identities.WebUsers[0] != "www-data" {
+		t.Fatalf("expected forge web user, got %+v", identities.WebUsers)
+	}
+}
+
+func TestGuessGeneratedIdentityConfigUsesAAPanelDefaults(t *testing.T) {
+	t.Parallel()
+
+	identities := guessGeneratedIdentityConfig(presetAAPanel, hostInspector{}, model.AuditConfig{})
+
+	if len(identities.DeployUsers) != 1 || identities.DeployUsers[0] != "www" {
+		t.Fatalf("expected aaPanel deploy user, got %+v", identities.DeployUsers)
+	}
+	if len(identities.RuntimeUsers) != 1 || identities.RuntimeUsers[0] != "www" {
+		t.Fatalf("expected aaPanel runtime user, got %+v", identities.RuntimeUsers)
+	}
+	if len(identities.WebUsers) != 1 || identities.WebUsers[0] != "www" {
+		t.Fatalf("expected aaPanel web user, got %+v", identities.WebUsers)
+	}
+}
+
+func TestGuessGeneratedIdentityConfigUsesCPanelAccountDefaults(t *testing.T) {
+	t.Parallel()
+
+	identities := guessGeneratedIdentityConfig(presetCPanel, hostInspector{}, model.AuditConfig{AppPath: "/home/alice/public_html"})
+
+	if len(identities.DeployUsers) != 1 || identities.DeployUsers[0] != "alice" {
+		t.Fatalf("expected cPanel deploy user, got %+v", identities.DeployUsers)
+	}
+	if len(identities.RuntimeUsers) != 1 || identities.RuntimeUsers[0] != "alice" {
+		t.Fatalf("expected cPanel runtime user, got %+v", identities.RuntimeUsers)
+	}
+	if len(identities.WebUsers) != 1 || identities.WebUsers[0] != "nobody" {
+		t.Fatalf("expected cPanel web user, got %+v", identities.WebUsers)
+	}
+}
+
 func TestAppRootHelpListsInitAndSetup(t *testing.T) {
 	t.Parallel()
 

@@ -14,6 +14,7 @@ func TestRootHelp(t *testing.T) {
 		"Read-only Laravel VPS auditor for operators under pressure.",
 		"Safety promises:",
 		"larainspect init",
+		"larainspect populate",
 		"larainspect setup",
 		"larainspect audit --interactive",
 	} {
@@ -67,6 +68,22 @@ func TestSetupHelp(t *testing.T) {
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("expected setup help to contain %q, got %q", want, help)
+		}
+	}
+}
+
+func TestPopulateHelp(t *testing.T) {
+	t.Parallel()
+
+	help := PopulateHelp()
+	for _, want := range []string{
+		"Fill missing or empty config values",
+		"--config string",
+		"--interactive",
+		"--preset string",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("expected populate help to contain %q, got %q", want, help)
 		}
 	}
 }

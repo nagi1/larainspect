@@ -94,6 +94,47 @@ Expected output includes:
 - X handle `@nagiworks`
 - commit and build date for tagged releases
 
+## First Run
+
+After install, the fastest path is:
+
+```bash
+larainspect setup
+larainspect audit
+```
+
+`larainspect setup` does more than write a starter config. It tries to detect the host layout, tune common service paths, and guess the deploy user, Laravel runtime user/group, and web user/group. It only prompts when some identity values are still missing, then persists them into `larainspect.yaml` so later findings stay aligned with the real host.
+
+If you already have a config file and only want to fill missing or empty host-derived values, run:
+
+```bash
+larainspect populate
+```
+
+If you prefer a minimal config instead of guided detection:
+
+```bash
+larainspect init
+```
+
+In that case you can add an optional `identities` block yourself:
+
+```yaml
+identities:
+  deploy_users:
+    - deploy
+  runtime_users:
+    - www-data
+  runtime_groups:
+    - www-data
+  web_users:
+    - www-data
+  web_groups:
+    - www-data
+```
+
+These values make permission and runtime-boundary findings context-aware instead of depending only on service inference.
+
 ## Upgrade
 
 Upgrade by re-running the installer:

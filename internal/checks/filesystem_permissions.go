@@ -27,11 +27,11 @@ func (FilesystemPermissionsCheck) Description() string {
 	return "Inspect Laravel path ownership and writable permission boundaries."
 }
 
-func (FilesystemPermissionsCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
+func (FilesystemPermissionsCheck) Run(_ context.Context, execution model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
 
 	for _, app := range snapshot.Apps {
-		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot)
+		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot, execution.Config)
 		finding, found := buildWorldWritablePathsFinding(app)
 		findings = appendFindingIfPresent(findings, finding, found)
 		finding, found = buildWorldReadableEnvironmentFinding(app)
@@ -440,7 +440,7 @@ func runtimeIdentityEvidence(identities appRuntimeIdentities) []model.Evidence {
 
 func containsString(values []string, target string) bool {
 	for _, value := range values {
-		if value == target {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(target)) {
 			return true
 		}
 	}

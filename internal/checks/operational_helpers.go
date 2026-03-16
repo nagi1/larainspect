@@ -299,22 +299,40 @@ func firewallAppearsDisabled(summaries []model.FirewallSummary) bool {
 	return true
 }
 
-func collectOperationalPrincipals(snapshot model.Snapshot) operationalPrincipals {
+func collectOperationalPrincipals(snapshot model.Snapshot, config model.AuditConfig) operationalPrincipals {
 	principals := operationalPrincipals{
 		Users:  []string{},
 		Groups: []string{},
 	}
 
-	for _, defaultUser := range []string{"deploy", "www-data", "nginx"} {
-		principals.Users = appendNormalizedUnique(principals.Users, defaultUser)
-		principals.Groups = appendNormalizedUnique(principals.Groups, defaultUser)
+	if len(config.NormalizedDeployUsers()) == 0 && len(config.NormalizedRuntimeUsers()) == 0 && len(config.NormalizedRuntimeGroups()) == 0 && len(config.NormalizedWebUsers()) == 0 && len(config.NormalizedWebGroups()) == 0 {
+		for _, defaultUser := range []string{"deploy", "www-data", "nginx"} {
+			principals.Users = appendNormalizedUnique(principals.Users, defaultUser)
+			principals.Groups = appendNormalizedUnique(principals.Groups, defaultUser)
+		}
+	}
+
+	for _, user := range config.NormalizedDeployUsers() {
+		principals.Users = appendNormalizedUnique(principals.Users, user)
+	}
+	for _, user := range config.NormalizedRuntimeUsers() {
+		principals.Users = appendNormalizedUnique(principals.Users, user)
+	}
+	for _, group := range config.NormalizedRuntimeGroups() {
+		principals.Groups = appendNormalizedUnique(principals.Groups, group)
+	}
+	for _, user := range config.NormalizedWebUsers() {
+		principals.Users = appendNormalizedUnique(principals.Users, user)
+	}
+	for _, group := range config.NormalizedWebGroups() {
+		principals.Groups = appendNormalizedUnique(principals.Groups, group)
 	}
 
 	for _, app := range snapshot.Apps {
 		principals.Users = appendNormalizedUnique(principals.Users, app.RootRecord.OwnerName)
 		principals.Groups = appendNormalizedUnique(principals.Groups, app.RootRecord.GroupName)
 
-		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot)
+		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot, config)
 		for _, user := range runtimeIdentities.Users {
 			principals.Users = appendNormalizedUnique(principals.Users, user)
 		}
@@ -421,8 +439,11 @@ func sshAccountHasAuthorizedKeys(account model.SSHAccount) bool {
 	return account.AuthorizedKeys.Inspected && account.AuthorizedKeys.Exists
 }
 
-func appDeployUsers(app model.LaravelApp, snapshot model.Snapshot) []string {
+func appDeployUsers(app model.LaravelApp, snapshot model.Snapshot, config model.AuditConfig) []string {
 	users := []string{}
+	for _, user := range config.NormalizedDeployUsers() {
+		users = appendNormalizedUnique(users, user)
+	}
 	users = appendNormalizedUnique(users, app.RootRecord.OwnerName)
 
 	for _, record := range operationalRecordsForApp(app, snapshot, commandLooksLikeDeploymentWorkflow) {

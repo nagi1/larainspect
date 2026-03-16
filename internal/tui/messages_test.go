@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/charmbracelet/bubbles/key"
+)
 
 func TestViewIDConstants(t *testing.T) {
 	if ViewScan != 0 {
@@ -28,4 +32,19 @@ func TestDefaultKeyMapBindings(t *testing.T) {
 	if len(groups) != 3 {
 		t.Errorf("FullHelp groups = %d, want 3", len(groups))
 	}
+	if !key.Matches(teaKey("left"), km.PanHorizontal) || !key.Matches(teaKey("home"), km.JumpHorizontal) {
+		t.Error("keymap should advertise horizontal pan bindings")
+	}
+}
+
+func teaKey(keyName string) keyEventLike {
+	return keyEventLike{keyName: keyName}
+}
+
+type keyEventLike struct {
+	keyName string
+}
+
+func (k keyEventLike) String() string {
+	return k.keyName
 }

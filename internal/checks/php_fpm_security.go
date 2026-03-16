@@ -27,9 +27,9 @@ func (PHPFPMSecurityCheck) Description() string {
 	return "Inspect PHP-FPM pool isolation, socket, and runtime hardening settings."
 }
 
-func (PHPFPMSecurityCheck) Run(_ context.Context, _ model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
+func (PHPFPMSecurityCheck) Run(_ context.Context, execution model.ExecutionContext, snapshot model.Snapshot) (model.CheckResult, error) {
 	findings := []model.Finding{}
-	observedNginxIdentities := collectObservedNginxSocketBoundaryIdentities(snapshot.SystemdUnits)
+	observedNginxIdentities := collectObservedNginxSocketBoundaryIdentities(snapshot.SystemdUnits, execution.Config)
 
 	for _, pool := range snapshot.PHPFPMPools {
 		if rootPoolFinding, found := buildRootPoolFinding(pool); found {

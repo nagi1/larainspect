@@ -15,6 +15,14 @@ type SetupAnswers struct {
 	AppPath  string
 }
 
+type IdentityAnswers struct {
+	DeployUsers   []string
+	RuntimeUsers  []string
+	RuntimeGroups []string
+	WebUsers      []string
+	WebGroups     []string
+}
+
 func (prompter Prompter) ResolveSetupAnswers(defaults SetupAnswers) (SetupAnswers, error) {
 	reader := bufio.NewReader(prompter.Input)
 
@@ -70,4 +78,86 @@ func (prompter Prompter) ResolveSetupAnswers(defaults SetupAnswers) (SetupAnswer
 		Scope:    resolvedScope,
 		AppPath:  strings.TrimSpace(appPath),
 	}, nil
+}
+
+func (prompter Prompter) ResolveIdentityAnswers(defaults IdentityAnswers) (IdentityAnswers, error) {
+	reader := bufio.NewReader(prompter.Input)
+
+	if _, err := fmt.Fprintln(prompter.Output, "Could not confidently detect all deploy, runtime, and web identities. Review the missing values Larainspect should enforce."); err != nil {
+		return IdentityAnswers{}, err
+	}
+
+	resolved := defaults
+	var err error
+	if len(resolved.DeployUsers) == 0 {
+		resolved.DeployUsers, err = prompter.promptIdentityList(reader, "Deploy users")
+		if err != nil {
+			return IdentityAnswers{}, err
+		}
+	}
+	if len(resolved.RuntimeUsers) == 0 {
+		resolved.RuntimeUsers, err = prompter.promptIdentityList(reader, "Runtime users")
+		if err != nil {
+			return IdentityAnswers{}, err
+		}
+	}
+	if len(resolved.RuntimeGroups) == 0 {
+		resolved.RuntimeGroups, err = prompter.promptIdentityList(reader, "Runtime groups")
+		if err != nil {
+			return IdentityAnswers{}, err
+		}
+	}
+	if len(resolved.WebUsers) == 0 {
+		resolved.WebUsers, err = prompter.promptIdentityList(reader, "Web users")
+		if err != nil {
+			return IdentityAnswers{}, err
+		}
+	}
+	if len(resolved.WebGroups) == 0 {
+		resolved.WebGroups, err = prompter.promptIdentityList(reader, "Web groups")
+		if err != nil {
+			return IdentityAnswers{}, err
+		}
+	}
+
+	return resolved, nil
+}
+
+func (prompter Prompter) promptIdentityList(reader *bufio.Reader, label string) ([]string, error) {
+	response, err := prompter.promptLine(reader, fmt.Sprintf("%s (comma-separated, leave blank to skip): ", label))
+	if err != nil {
+		return nil, err
+	}
+
+	return splitIdentityList(response), nil
+}
+
+func splitIdentityList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		trimmedPart := strings.TrimSpace(part)
+		if trimmedPart == "" {
+			continue
+		}
+
+		lookupKey := strings.ToLower(trimmedPart)
+		if _, found := seen[lookupKey]; found {
+			continue
+		}
+
+		seen[lookupKey] = struct{}{}
+		values = append(values, trimmedPart)
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+
+	return values
 }

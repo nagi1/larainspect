@@ -20,6 +20,7 @@ Safety promises:
 
 Usage:
   larainspect init [flags]
+  larainspect populate [flags]
   larainspect setup [flags]
   larainspect audit [flags]
   larainspect controls [flags]
@@ -28,6 +29,7 @@ Usage:
 
 Quick start:
   larainspect init
+  larainspect populate
   larainspect setup
   larainspect audit
   larainspect audit --scope app --app-path /var/www/shop
@@ -40,12 +42,14 @@ Commands:
   audit     Run the read-only audit workflow
   controls  List normalized external security controls and check mappings
   init      Write a starter larainspect.yaml in the current directory
+  populate  Fill missing config values in an existing config file
   setup     Detect a hosting preset and generate a tuned larainspect.yaml
   help      Show command help
   version   Print the development version
 
 Learn more:
   Use 'larainspect init --help' for quick config bootstrapping.
+  Use 'larainspect populate --help' to fill missing config values without replacing the file.
   Use 'larainspect setup --help' for guided config generation with preset detection.
   Use 'larainspect audit --help' for flags, onboarding, interactive guidance, and exit codes.
   Use 'larainspect controls --help' to inspect the normalized external control map.
@@ -102,6 +106,32 @@ Supported presets:
 Flags:
   --path string      Output path for the generated config (default "larainspect.yaml")
   --preset string    Skip auto-detection and force a preset
+`
+}
+
+func PopulateHelp() string {
+	return `larainspect populate
+
+Fill missing or empty config values in an existing Larainspect config.
+
+This command is designed for hosts that already have a config file. It loads the
+current config, preserves values you already set, and only fills missing server,
+Laravel, service, and identity fields from host detection. With --interactive,
+it also asks for any remaining missing identity values.
+
+Usage:
+  larainspect populate [flags]
+
+Examples:
+  larainspect populate
+  larainspect populate --config /etc/larainspect/config.yaml
+  larainspect populate --interactive
+  larainspect populate --preset aapanel
+
+Flags:
+  --config string     Path to the existing config file to update
+  --interactive       Prompt for missing identity values after host inference
+  --preset string     Skip auto-detection and force a preset
 `
 }
 

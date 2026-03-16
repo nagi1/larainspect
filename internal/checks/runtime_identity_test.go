@@ -33,7 +33,7 @@ func TestCollectAppRuntimeIdentitiesIncludesMatchedPoolsAndWorkerUsers(t *testin
 		}},
 	}
 
-	identities := collectAppRuntimeIdentities(app, snapshot)
+	identities := collectAppRuntimeIdentities(app, snapshot, model.AuditConfig{})
 	if len(identities.Pools) != 1 {
 		t.Fatalf("collectAppRuntimeIdentities() pools = %+v", identities.Pools)
 	}
@@ -42,6 +42,24 @@ func TestCollectAppRuntimeIdentitiesIncludesMatchedPoolsAndWorkerUsers(t *testin
 	}
 	if !containsString(identities.Groups, "www-data") {
 		t.Fatalf("collectAppRuntimeIdentities() groups = %+v", identities.Groups)
+	}
+}
+
+func TestCollectAppRuntimeIdentitiesIncludesConfiguredRuntimePolicy(t *testing.T) {
+	t.Parallel()
+
+	identities := collectAppRuntimeIdentities(model.LaravelApp{RootPath: "/var/www/shop"}, model.Snapshot{}, model.AuditConfig{
+		Identities: model.IdentityConfig{
+			RuntimeUsers:  []string{"php-shop"},
+			RuntimeGroups: []string{"php-shop"},
+		},
+	})
+
+	if !containsString(identities.Users, "php-shop") {
+		t.Fatalf("expected configured runtime user, got %+v", identities.Users)
+	}
+	if !containsString(identities.Groups, "php-shop") {
+		t.Fatalf("expected configured runtime group, got %+v", identities.Groups)
 	}
 }
 

@@ -70,11 +70,21 @@ func buildObservedNginxSocketBoundaryFinding(pool model.PHPFPMPool, nginxSites [
 	}, true
 }
 
-func collectObservedNginxSocketBoundaryIdentities(units []model.SystemdUnit) observedNginxSocketBoundaryIdentities {
+func collectObservedNginxSocketBoundaryIdentities(units []model.SystemdUnit, config model.AuditConfig) observedNginxSocketBoundaryIdentities {
 	identities := observedNginxSocketBoundaryIdentities{
 		Users:   []string{},
 		Groups:  []string{},
 		Sources: []string{},
+	}
+
+	for _, user := range config.NormalizedWebUsers() {
+		identities.Users = appendNormalizedUnique(identities.Users, user)
+	}
+	for _, group := range config.NormalizedWebGroups() {
+		identities.Groups = appendNormalizedUnique(identities.Groups, group)
+	}
+	if (len(config.NormalizedWebUsers()) > 0 || len(config.NormalizedWebGroups()) > 0) && strings.TrimSpace(config.ConfigPath) != "" {
+		identities.Sources = appendNormalizedUnique(identities.Sources, config.ConfigPath)
 	}
 
 	for _, unit := range units {

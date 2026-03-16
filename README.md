@@ -92,6 +92,14 @@ larainspect setup
 larainspect audit
 ```
 
+`larainspect setup` tries to detect the hosting layout and guess the deploy user, runtime user/group, and web user/group from the host first. It only prompts when some of those identities cannot be inferred confidently, then writes them into the generated config so later findings stay context-aware.
+
+If you already have a config file and only want to fill missing or empty host-derived values, use:
+
+```bash
+larainspect populate
+```
+
 If you want a config file first, start here:
 
 ```bash
@@ -156,9 +164,15 @@ larainspect audit --interactive
 # write a starter config in the current directory
 larainspect init
 
-# detect aaPanel / Forge / DigitalOcean / cPanel / common VPS layouts
+# fill missing config values in an existing file without replacing values you set
+larainspect populate
+
+# detect aaPanel / Forge / DigitalOcean / cPanel / common VPS layouts,
+# then persist guessed deploy/runtime/web identities
 larainspect setup
 ```
+
+Use `setup` when you want Larainspect to generate a new tuned config for the current host. Use `populate` when you already have a config and want Larainspect to backfill only the missing server, Laravel, service, or identity values. Use `init` when you want a minimal starter file and prefer to fill in the identity policy yourself.
 
 ### Export reports
 
@@ -271,6 +285,18 @@ laravel:
   scan_roots:
     - /var/www
 
+identities:
+  deploy_users:
+    - deploy
+  runtime_users:
+    - www-data
+  runtime_groups:
+    - www-data
+  web_users:
+    - www-data
+  web_groups:
+    - www-data
+
 output:
   format: terminal
   verbosity: normal
@@ -279,6 +305,18 @@ rules:
   disable:
     - source.config # skip source config checks on this host
 ```
+
+The `identities` block is optional, but it is the preferred way to make permission, drift, runtime-boundary, and socket-boundary findings match your real deploy/runtime/web account model instead of relying on inference alone.
+
+Identity fields:
+
+- `deploy_users`: release, CI, or SSH users that deploy the app
+- `runtime_users`: PHP-FPM, Horizon, queue, or scheduler users that execute Laravel code
+- `runtime_groups`: groups that back those runtime processes
+- `web_users`: Nginx or Apache worker users that front the app
+- `web_groups`: groups used by the web tier
+
+If you run `larainspect setup`, Larainspect will try to populate these from the host automatically and only ask for the missing values. If you already have a config, `larainspect populate` applies the same host inference only to missing or empty values and leaves the rest alone.
 
 See [larainspect.example.yaml](larainspect.example.yaml) for all available options.
 

@@ -147,10 +147,10 @@ func (OperationalDeployCheck) Run(_ context.Context, execution model.ExecutionCo
 			})
 		}
 
-		if finding, found := buildPostDeployDriftFinding(app, snapshot); found {
+		if finding, found := buildPostDeployDriftFinding(app, snapshot, execution.Config); found {
 			findings = append(findings, finding)
 		}
-		if finding, found := buildPostRestoreDriftFinding(app, snapshot); found {
+		if finding, found := buildPostRestoreDriftFinding(app, snapshot, execution.Config); found {
 			findings = append(findings, finding)
 		}
 	}

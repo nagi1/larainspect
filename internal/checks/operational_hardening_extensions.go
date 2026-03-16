@@ -7,12 +7,12 @@ import (
 	"github.com/nagi1/larainspect/internal/model"
 )
 
-func collectRuntimeSSHAccessFindings(snapshot model.Snapshot, sshAccountsByUser map[string]model.SSHAccount) []model.Finding {
+func collectRuntimeSSHAccessFindings(snapshot model.Snapshot, sshAccountsByUser map[string]model.SSHAccount, config model.AuditConfig) []model.Finding {
 	findings := []model.Finding{}
 
 	for _, app := range snapshot.Apps {
-		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot)
-		deployUsers := appDeployUsers(app, snapshot)
+		runtimeIdentities := collectAppRuntimeIdentities(app, snapshot, config)
+		deployUsers := appDeployUsers(app, snapshot, config)
 
 		for _, runtimeUser := range runtimeIdentities.Users {
 			account, found := sshAccountsByUser[runtimeUser]

@@ -15,6 +15,14 @@ type HostProfile struct {
 	Switches DiscoverySwitches
 }
 
+type IdentityConfig struct {
+	DeployUsers   []string
+	RuntimeUsers  []string
+	RuntimeGroups []string
+	WebUsers      []string
+	WebGroups     []string
+}
+
 type DiscoveryPaths struct {
 	UseDefaultPatterns       bool
 	AppScanRoots             []string
@@ -133,6 +141,26 @@ func (config AuditConfig) NormalizedSupervisorBinary() string {
 	return strings.TrimSpace(config.Profile.Commands.SupervisorBinary)
 }
 
+func (config AuditConfig) NormalizedDeployUsers() []string {
+	return normalizeIdentityValues(config.Identities.DeployUsers)
+}
+
+func (config AuditConfig) NormalizedRuntimeUsers() []string {
+	return normalizeIdentityValues(config.Identities.RuntimeUsers)
+}
+
+func (config AuditConfig) NormalizedRuntimeGroups() []string {
+	return normalizeIdentityValues(config.Identities.RuntimeGroups)
+}
+
+func (config AuditConfig) NormalizedWebUsers() []string {
+	return normalizeIdentityValues(config.Identities.WebUsers)
+}
+
+func (config AuditConfig) NormalizedWebGroups() []string {
+	return normalizeIdentityValues(config.Identities.WebGroups)
+}
+
 func (config AuditConfig) NormalizedSystemdUnitPatterns() []string {
 	return config.effectivePatternList(defaultSystemdUnitPatterns(config.NormalizedOSFamily()), config.Profile.Paths.SystemdUnitPatterns)
 }
@@ -199,6 +227,39 @@ func normalizePaths(paths []string) []string {
 	slices.Sort(normalizedPaths)
 
 	return normalizedPaths
+}
+
+func normalizeIdentityValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			continue
+		}
+
+		lookupKey := strings.ToLower(trimmedValue)
+		if _, found := seen[lookupKey]; found {
+			continue
+		}
+
+		seen[lookupKey] = struct{}{}
+		normalized = append(normalized, trimmedValue)
+	}
+
+	slices.SortFunc(normalized, func(left string, right string) int {
+		return strings.Compare(strings.ToLower(left), strings.ToLower(right))
+	})
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
 }
 
 func defaultNginxConfigPatterns(osFamily string) []string {
