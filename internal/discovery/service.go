@@ -475,6 +475,10 @@ func (service SnapshotService) discoverLaravelApplications(ctx context.Context, 
 		}
 	}
 
+	if explicitApp != nil {
+		return []model.LaravelApp{*explicitApp}, unknowns
+	}
+
 	// Phase 2: Collect all unique candidate roots across scan roots.
 	type candidateEntry struct {
 		rootPath string

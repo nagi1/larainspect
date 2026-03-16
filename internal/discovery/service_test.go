@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nagi1/larainspect/internal/model"
@@ -248,6 +249,79 @@ func TestSnapshotServiceDiscoversLaravelAppsFromScanRoots(t *testing.T) {
 
 	if !discoveredRoots[firstAppRoot] || !discoveredRoots[secondAppRoot] {
 		t.Fatalf("expected discovered roots %q and %q, got %+v", firstAppRoot, secondAppRoot, snapshot.Apps)
+	}
+}
+
+func TestSnapshotServiceAutoScopePrefersExplicitAppOverScanRoots(t *testing.T) {
+	t.Parallel()
+
+	scanRoot := t.TempDir()
+	explicitAppRoot := createLaravelTestApp(t, filepath.Join(scanRoot, "sites/shop/current"), false)
+	_ = createLaravelTestApp(t, filepath.Join(scanRoot, "sites/blog/current"), false)
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) {
+		return "", errors.New("missing")
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:     model.ScanScopeAuto,
+			AppPath:   explicitAppRoot,
+			ScanRoots: []string{scanRoot},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+	if len(snapshot.Apps) != 1 {
+		t.Fatalf("expected only the explicit app, got %+v", snapshot.Apps)
+	}
+	if snapshot.Apps[0].RootPath != explicitAppRoot {
+		t.Fatalf("expected explicit app root %q, got %+v", explicitAppRoot, snapshot.Apps)
+	}
+}
+
+func TestSnapshotServiceAutoScopeFallsBackToScanRootsWhenExplicitAppInvalid(t *testing.T) {
+	t.Parallel()
+
+	scanRoot := t.TempDir()
+	discoveredAppRoot := createLaravelTestApp(t, filepath.Join(scanRoot, "sites/shop/current"), false)
+	missingAppRoot := filepath.Join(scanRoot, "sites/missing/current")
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) {
+		return "", errors.New("missing")
+	}
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:     model.ScanScopeAuto,
+			AppPath:   missingAppRoot,
+			ScanRoots: []string{scanRoot},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(snapshot.Apps) != 1 || snapshot.Apps[0].RootPath != discoveredAppRoot {
+		t.Fatalf("expected scan-root fallback app %q, got %+v", discoveredAppRoot, snapshot.Apps)
+	}
+
+	foundRequestedUnknown := false
+	for _, unknown := range unknowns {
+		if unknown.CheckID == appDiscoveryCheckID && strings.Contains(unknown.Title, "Requested app path is not a Laravel application") {
+			foundRequestedUnknown = true
+			break
+		}
+	}
+	if !foundRequestedUnknown {
+		t.Fatalf("expected requested-app fallback unknown, got %+v", unknowns)
 	}
 }
 
