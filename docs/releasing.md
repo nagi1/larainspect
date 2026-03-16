@@ -24,6 +24,7 @@ That command:
 
 - runs `go test ./...`
 - runs `go run github.com/goreleaser/goreleaser/v2@latest check`
+- prints the author identities included in the unreleased commit range
 - creates an annotated SemVer tag
 - pushes the tag to `origin`
 - triggers the GitHub Release workflow automatically

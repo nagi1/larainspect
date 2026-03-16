@@ -38,6 +38,31 @@ require_command() {
   fi
 }
 
+print_release_authors() {
+  PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+  RANGE=HEAD
+  LABEL="in repository history"
+
+  if [ -n "$PREVIOUS_TAG" ]; then
+    RANGE="$PREVIOUS_TAG..HEAD"
+    LABEL="since $PREVIOUS_TAG"
+  fi
+
+  AUTHORS=$(git shortlog -sne "$RANGE")
+
+  echo "Release author identities $LABEL:"
+  if [ -n "$AUTHORS" ]; then
+    printf '%s\n' "$AUTHORS"
+  else
+    echo "  (no unreleased commits found)"
+  fi
+
+  AUTHOR_COUNT=$(printf '%s\n' "$AUTHORS" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+  if [ "${AUTHOR_COUNT:-0}" -gt 1 ]; then
+    echo "warning: multiple distinct author identities are present in this release range; GitHub may show more than one contributor on the release page" >&2
+  fi
+}
+
 confirm() {
   if [ "$YES" -eq 1 ]; then
     return 0
@@ -160,6 +185,7 @@ echo "Preparing release"
 echo "  version: $VERSION"
 echo "  branch:  $CURRENT_BRANCH"
 echo "  commit:  $(git rev-parse --short HEAD)"
+print_release_authors
 
 confirm
 

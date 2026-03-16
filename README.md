@@ -395,7 +395,7 @@ Planned work to expand coverage, improve usability, and make larainspect easier 
 
 ## Maintainer
 
-Ahmed Nagi (`nagi1`) — X: [@nagiworks](https://x.com/nagiworks)
+Ahmed Nagi (`nagi1`) — X: [nagiworks on X](https://x.com/nagiworks)
 
 ## Release
 
