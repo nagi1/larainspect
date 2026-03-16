@@ -97,6 +97,9 @@ func appExpectedPublicStorageTargets(app model.LaravelApp) []string {
 	for _, appRoot := range appCanonicalRoots(app) {
 		targets = append(targets, filepath.Join(appRoot, "storage", "app", "public"))
 	}
+	if app.Deployment.UsesReleaseLayout && strings.TrimSpace(app.Deployment.CurrentPath) != "" && filepath.Base(filepath.Clean(app.Deployment.CurrentPath)) == "current" {
+		targets = append(targets, filepath.Join(filepath.Dir(filepath.Clean(app.Deployment.CurrentPath)), "storage", "app", "public"))
+	}
 	if app.Deployment.UsesReleaseLayout && strings.TrimSpace(app.Deployment.SharedPath) != "" {
 		targets = append(targets, filepath.Join(app.Deployment.SharedPath, "storage", "app", "public"))
 	}

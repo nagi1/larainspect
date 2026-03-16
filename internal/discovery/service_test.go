@@ -434,6 +434,81 @@ func TestSnapshotServiceCollectsReleaseLayoutMetadata(t *testing.T) {
 	}
 }
 
+func TestSnapshotServiceCollectsReleaseLayoutMetadataForCurrentDirectoryWithoutSymlink(t *testing.T) {
+	t.Parallel()
+
+	deployRoot := t.TempDir()
+	currentPath := filepath.Join(deployRoot, "current")
+	previousReleasePath := filepath.Join(deployRoot, "releases", "20260310")
+
+	createLaravelTestApp(t, currentPath, false)
+	createLaravelTestApp(t, previousReleasePath, false)
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) { return "", errors.New("missing") }
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: currentPath,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	deployment := snapshot.Apps[0].Deployment
+	if !deployment.UsesReleaseLayout || deployment.CurrentPath != currentPath || deployment.ReleaseRoot != filepath.Join(deployRoot, "releases") || deployment.SharedPath != filepath.Join(deployRoot, "shared") || len(deployment.PreviousReleases) != 1 {
+		t.Fatalf("unexpected deployment metadata: %+v", deployment)
+	}
+	if deployment.PreviousReleases[0].AbsolutePath != previousReleasePath {
+		t.Fatalf("expected previous release %q, got %+v", previousReleasePath, deployment.PreviousReleases)
+	}
+}
+
+func TestSnapshotServiceCollectsReleaseLayoutMetadataFromDeployerRecipe(t *testing.T) {
+	t.Parallel()
+
+	deployRoot := t.TempDir()
+	currentReleasePath := filepath.Join(deployRoot, "releases", "20260312")
+	previousReleasePath := filepath.Join(deployRoot, "releases", "20260310")
+
+	createLaravelTestApp(t, currentReleasePath, false)
+	createLaravelTestApp(t, previousReleasePath, false)
+	if err := os.MkdirAll(filepath.Join(currentReleasePath, "deployment/hosts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(deployment/hosts) error = %v", err)
+	}
+	writeTestFile(t, filepath.Join(currentReleasePath, "deploy.php"), "<?php\nrequire __DIR__.'/deployment/hosts/production.php';\n")
+	writeTestFile(t, filepath.Join(currentReleasePath, "deployment/hosts/production.php"), "<?php\nnamespace Deployer;\nhost('production')->set('deploy_path', '"+deployRoot+"');\n")
+
+	service := newTestSnapshotService()
+	service.lookPath = func(name string) (string, error) { return "", errors.New("missing") }
+
+	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
+		Config: model.AuditConfig{
+			Scope:   model.ScanScopeApp,
+			AppPath: currentReleasePath,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(unknowns) != 0 {
+		t.Fatalf("expected no unknowns, got %+v", unknowns)
+	}
+
+	deployment := snapshot.Apps[0].Deployment
+	if !deployment.UsesReleaseLayout || deployment.CurrentPath != filepath.Join(deployRoot, "current") || deployment.ReleaseRoot != filepath.Join(deployRoot, "releases") || deployment.SharedPath != filepath.Join(deployRoot, "shared") || len(deployment.PreviousReleases) != 1 {
+		t.Fatalf("unexpected deployment metadata: %+v", deployment)
+	}
+	if deployment.PreviousReleases[0].AbsolutePath != previousReleasePath {
+		t.Fatalf("expected previous release %q, got %+v", previousReleasePath, deployment.PreviousReleases)
+	}
+}
+
 func TestSnapshotServiceSkipsApplicationDiscoveryForHostScope(t *testing.T) {
 	t.Parallel()
 

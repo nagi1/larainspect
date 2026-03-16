@@ -5,13 +5,35 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/nagi1/larainspect/internal/model"
+	"gopkg.in/yaml.v3"
 )
+
+var deployerPHPSetRegex = regexp.MustCompile(`(?s)(?:->\s*)?set\(\s*['"]([a-z_]+)['"]\s*,\s*['"]([^'"]+)['"]\s*\)`)
+var deployerPHPRequireRegex = regexp.MustCompile(`(?m)^\s*require(?:_once)?\s+__DIR__\s*\.\s*['"](/[^'"]+)['"]\s*;`)
+
+type deploymentLayoutHint struct {
+	UsesReleaseLayout bool
+	CurrentPath       string
+	ReleaseRoot       string
+	SharedPath        string
+	ActiveReleasePath string
+}
+
+type deploymentRecipeConfig struct {
+	DeployPath   string
+	CurrentPath  string
+	ReleaseRoot  string
+	SharedPath   string
+	ReleasePath  string
+	ReleasesPath string
+}
 
 func expectedLaravelPathList() []string {
 	expectations := model.CoreLaravelPathExpectations()
@@ -350,31 +372,31 @@ func isWithinWritableAppPath(relativePath string) bool {
 
 func (service SnapshotService) collectDeploymentInfo(rootPath string, resolvedPath string) (model.DeploymentInfo, []model.Unknown) {
 	deploymentInfo := model.DeploymentInfo{CurrentPath: filepath.Clean(rootPath)}
-	unknowns := []model.Unknown{}
-	cleanResolvedPath := filepath.Clean(strings.TrimSpace(resolvedPath))
-	if cleanResolvedPath == "." || cleanResolvedPath == "" || cleanResolvedPath == deploymentInfo.CurrentPath {
+	deploymentHint, unknowns := service.inferDeploymentLayout(rootPath, resolvedPath)
+	if !deploymentHint.UsesReleaseLayout {
 		return deploymentInfo, unknowns
 	}
 
-	if filepath.Base(deploymentInfo.CurrentPath) != "current" || filepath.Base(filepath.Dir(cleanResolvedPath)) != "releases" {
-		return deploymentInfo, unknowns
-	}
-
-	releaseRoot := filepath.Dir(cleanResolvedPath)
-	sharedPath := filepath.Join(filepath.Dir(releaseRoot), "shared")
 	deploymentInfo.UsesReleaseLayout = true
-	deploymentInfo.ReleaseRoot = releaseRoot
-	deploymentInfo.SharedPath = sharedPath
+	if strings.TrimSpace(deploymentHint.CurrentPath) != "" {
+		deploymentInfo.CurrentPath = deploymentHint.CurrentPath
+	}
+	deploymentInfo.ReleaseRoot = deploymentHint.ReleaseRoot
+	deploymentInfo.SharedPath = deploymentHint.SharedPath
 
-	releasePaths, err := service.expandConfigPattern(filepath.Join(releaseRoot, "*"))
+	if strings.TrimSpace(deploymentInfo.ReleaseRoot) == "" {
+		return deploymentInfo, unknowns
+	}
+
+	releasePaths, err := service.expandConfigPattern(filepath.Join(deploymentInfo.ReleaseRoot, "*"))
 	if err != nil {
-		unknowns = append(unknowns, newPathUnknown(appDiscoveryCheckID, "Unable to inspect release layout", releaseRoot, err))
+		unknowns = append(unknowns, newPathUnknown(appDiscoveryCheckID, "Unable to inspect release layout", deploymentInfo.ReleaseRoot, err))
 		return deploymentInfo, unknowns
 	}
 
 	for _, releasePath := range releasePaths {
 		cleanReleasePath := filepath.Clean(releasePath)
-		if cleanReleasePath == cleanResolvedPath {
+		if deploymentHint.ActiveReleasePath != "" && cleanReleasePath == deploymentHint.ActiveReleasePath {
 			continue
 		}
 
@@ -395,6 +417,344 @@ func (service SnapshotService) collectDeploymentInfo(rootPath string, resolvedPa
 	model.SortPathRecords(deploymentInfo.PreviousReleases)
 
 	return deploymentInfo, unknowns
+}
+
+func (service SnapshotService) inferDeploymentLayout(rootPath string, resolvedPath string) (deploymentLayoutHint, []model.Unknown) {
+	cleanRootPath := filepath.Clean(rootPath)
+	cleanResolvedPath := filepath.Clean(strings.TrimSpace(resolvedPath))
+
+	if hint, found := inferDeploymentLayoutFromResolvedPath(cleanRootPath, cleanResolvedPath); found {
+		return hint, nil
+	}
+
+	if hint, found := service.inferDeploymentLayoutFromCurrentPath(cleanRootPath); found {
+		return hint, nil
+	}
+
+	if hint, found := service.inferDeploymentLayoutFromReleasePath(cleanRootPath); found {
+		return hint, nil
+	}
+
+	recipeConfigs, unknowns := service.collectDeploymentRecipeConfigs(cleanRootPath, cleanResolvedPath)
+	for _, recipeConfig := range recipeConfigs {
+		if hint, found := inferDeploymentLayoutFromRecipe(cleanRootPath, cleanResolvedPath, recipeConfig); found {
+			return hint, unknowns
+		}
+	}
+
+	return deploymentLayoutHint{}, unknowns
+}
+
+func inferDeploymentLayoutFromResolvedPath(currentPath string, resolvedPath string) (deploymentLayoutHint, bool) {
+	if resolvedPath == "." || resolvedPath == "" || resolvedPath == currentPath {
+		return deploymentLayoutHint{}, false
+	}
+	if filepath.Base(currentPath) != "current" || filepath.Base(filepath.Dir(resolvedPath)) != "releases" {
+		return deploymentLayoutHint{}, false
+	}
+
+	releaseRoot := filepath.Dir(resolvedPath)
+	deployRoot := filepath.Dir(releaseRoot)
+	return deploymentLayoutHint{
+		UsesReleaseLayout: true,
+		CurrentPath:       currentPath,
+		ReleaseRoot:       releaseRoot,
+		SharedPath:        filepath.Join(deployRoot, "shared"),
+		ActiveReleasePath: resolvedPath,
+	}, true
+}
+
+func (service SnapshotService) inferDeploymentLayoutFromCurrentPath(currentPath string) (deploymentLayoutHint, bool) {
+	if filepath.Base(currentPath) != "current" {
+		return deploymentLayoutHint{}, false
+	}
+
+	deployRoot := filepath.Dir(currentPath)
+	releaseRoot := filepath.Join(deployRoot, "releases")
+	if !service.pathIsDirectory(releaseRoot) {
+		return deploymentLayoutHint{}, false
+	}
+
+	return deploymentLayoutHint{
+		UsesReleaseLayout: true,
+		CurrentPath:       currentPath,
+		ReleaseRoot:       releaseRoot,
+		SharedPath:        filepath.Join(deployRoot, "shared"),
+	}, true
+}
+
+func (service SnapshotService) inferDeploymentLayoutFromReleasePath(rootPath string) (deploymentLayoutHint, bool) {
+	if filepath.Base(filepath.Dir(rootPath)) != "releases" {
+		return deploymentLayoutHint{}, false
+	}
+
+	releaseRoot := filepath.Dir(rootPath)
+	deployRoot := filepath.Dir(releaseRoot)
+	currentPath := filepath.Join(deployRoot, "current")
+	if !service.pathExists(currentPath) {
+		return deploymentLayoutHint{}, false
+	}
+
+	return deploymentLayoutHint{
+		UsesReleaseLayout: true,
+		CurrentPath:       currentPath,
+		ReleaseRoot:       releaseRoot,
+		SharedPath:        filepath.Join(deployRoot, "shared"),
+		ActiveReleasePath: rootPath,
+	}, true
+}
+
+func inferDeploymentLayoutFromRecipe(rootPath string, resolvedPath string, recipeConfig deploymentRecipeConfig) (deploymentLayoutHint, bool) {
+	deployPath := filepath.Clean(strings.TrimSpace(recipeConfig.DeployPath))
+	if deployPath == "." || deployPath == "" {
+		return deploymentLayoutHint{}, false
+	}
+
+	currentPath := deploymentPathValueOrDefault(recipeConfig.CurrentPath, filepath.Join(deployPath, "current"), deployPath)
+	releaseRoot := deploymentPathValueOrDefault(recipeConfig.ReleaseRoot, "", deployPath)
+	if releaseRoot == "" {
+		releaseRoot = deploymentPathValueOrDefault(recipeConfig.ReleasesPath, filepath.Join(deployPath, "releases"), deployPath)
+	}
+	if releaseRoot == "" {
+		releasePath := deploymentPathValueOrDefault(recipeConfig.ReleasePath, "", deployPath)
+		if releasePath != "" {
+			releaseRoot = filepath.Dir(strings.TrimSuffix(releasePath, string(filepath.Separator)+"{{release_name}}"))
+		}
+	}
+	if releaseRoot == "" {
+		releaseRoot = filepath.Join(deployPath, "releases")
+	}
+	sharedPath := deploymentPathValueOrDefault(recipeConfig.SharedPath, filepath.Join(deployPath, "shared"), deployPath)
+
+	cleanRootPath := filepath.Clean(rootPath)
+	cleanResolvedPath := filepath.Clean(strings.TrimSpace(resolvedPath))
+	activeReleasePath := ""
+	if cleanRootPath == currentPath || cleanResolvedPath == currentPath {
+		if filepath.Base(filepath.Dir(cleanResolvedPath)) == "releases" {
+			activeReleasePath = cleanResolvedPath
+		}
+	} else if cleanRootPath == filepath.Clean(releaseRoot) || cleanResolvedPath == filepath.Clean(releaseRoot) {
+		return deploymentLayoutHint{}, false
+	} else if pathIsWithinRoot(cleanRootPath, releaseRoot) {
+		activeReleasePath = cleanRootPath
+	} else if pathIsWithinRoot(cleanResolvedPath, releaseRoot) {
+		activeReleasePath = cleanResolvedPath
+	} else {
+		return deploymentLayoutHint{}, false
+	}
+
+	return deploymentLayoutHint{
+		UsesReleaseLayout: true,
+		CurrentPath:       currentPath,
+		ReleaseRoot:       releaseRoot,
+		SharedPath:        sharedPath,
+		ActiveReleasePath: activeReleasePath,
+	}, true
+}
+
+func deploymentPathValueOrDefault(value string, fallback string, deployPath string) string {
+	cleanValue := strings.TrimSpace(value)
+	if cleanValue == "" {
+		if strings.TrimSpace(fallback) == "" {
+			return ""
+		}
+		return filepath.Clean(fallback)
+	}
+
+	replacedValue := strings.ReplaceAll(cleanValue, "{{deploy_path}}", deployPath)
+	replacedValue = strings.ReplaceAll(replacedValue, "{{deployPath}}", deployPath)
+	return filepath.Clean(replacedValue)
+}
+
+func pathIsWithinRoot(path string, root string) bool {
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	cleanRoot := filepath.Clean(strings.TrimSpace(root))
+	if cleanPath == "." || cleanPath == "" || cleanRoot == "." || cleanRoot == "" {
+		return false
+	}
+
+	return cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator))
+}
+
+func (service SnapshotService) pathExists(path string) bool {
+	_, err := service.statPath(path)
+	return err == nil
+}
+
+func (service SnapshotService) pathIsDirectory(path string) bool {
+	info, err := service.statPath(path)
+	return err == nil && info.IsDir()
+}
+
+func (service SnapshotService) collectDeploymentRecipeConfigs(rootPath string, resolvedPath string) ([]deploymentRecipeConfig, []model.Unknown) {
+	candidateRoots := []string{rootPath}
+	if resolvedPath != "." && resolvedPath != "" && resolvedPath != rootPath {
+		candidateRoots = append(candidateRoots, resolvedPath)
+	}
+
+	configs := []deploymentRecipeConfig{}
+	unknowns := []model.Unknown{}
+	visitedRecipePaths := map[string]bool{}
+
+	for _, candidateRoot := range candidateRoots {
+		for _, candidateName := range []string{"deploy.php", "deploy.yaml", "deploy.yml", "deployer.yaml", "deployer.yml"} {
+			recipePath := filepath.Join(candidateRoot, candidateName)
+			if visitedRecipePaths[recipePath] {
+				continue
+			}
+			visitedRecipePaths[recipePath] = true
+
+			recipeBytes, unknown := service.readOptionalFile(recipePath, "Unable to read deployment recipe")
+			if unknown != nil {
+				unknowns = append(unknowns, *unknown)
+				continue
+			}
+			if len(recipeBytes) == 0 {
+				continue
+			}
+
+			switch filepath.Ext(recipePath) {
+			case ".php":
+				phpConfigs, phpUnknowns := service.parseDeployerPHPRecipe(recipePath)
+				configs = append(configs, phpConfigs...)
+				unknowns = append(unknowns, phpUnknowns...)
+			default:
+				yamlConfigs, yamlUnknowns := service.parseDeployerYAMLRecipe(recipePath)
+				configs = append(configs, yamlConfigs...)
+				unknowns = append(unknowns, yamlUnknowns...)
+			}
+		}
+	}
+
+	return configs, unknowns
+}
+
+func (service SnapshotService) parseDeployerPHPRecipe(recipePath string) ([]deploymentRecipeConfig, []model.Unknown) {
+	contents, unknowns := service.collectDeployerPHPRecipeContents(recipePath, map[string]bool{})
+	if len(contents) == 0 {
+		return nil, unknowns
+	}
+
+	mergedContents := strings.Join(contents, "\n")
+	deployPaths := []string{}
+	configValues := map[string]string{}
+	for _, match := range deployerPHPSetRegex.FindAllStringSubmatch(mergedContents, -1) {
+		if len(match) != 3 {
+			continue
+		}
+
+		key := strings.TrimSpace(match[1])
+		value := strings.TrimSpace(match[2])
+		if key == "deploy_path" {
+			deployPaths = append(deployPaths, value)
+			continue
+		}
+		if _, found := configValues[key]; !found {
+			configValues[key] = value
+		}
+	}
+
+	configs := []deploymentRecipeConfig{}
+	for _, deployPath := range uniqueStrings(deployPaths) {
+		configs = append(configs, deploymentRecipeConfig{
+			DeployPath:   deployPath,
+			CurrentPath:  configValues["current_path"],
+			ReleaseRoot:  configValues["release_root"],
+			SharedPath:   configValues["shared_path"],
+			ReleasePath:  configValues["release_path"],
+			ReleasesPath: configValues["releases_path"],
+		})
+	}
+
+	return configs, unknowns
+}
+
+func (service SnapshotService) collectDeployerPHPRecipeContents(recipePath string, visited map[string]bool) ([]string, []model.Unknown) {
+	cleanRecipePath := filepath.Clean(recipePath)
+	if visited[cleanRecipePath] {
+		return nil, nil
+	}
+	visited[cleanRecipePath] = true
+
+	recipeBytes, unknown := service.readOptionalFile(cleanRecipePath, "Unable to read deployment recipe")
+	if unknown != nil {
+		return nil, []model.Unknown{*unknown}
+	}
+	if len(recipeBytes) == 0 {
+		return nil, nil
+	}
+
+	contents := []string{string(recipeBytes)}
+	unknowns := []model.Unknown{}
+	for _, match := range deployerPHPRequireRegex.FindAllStringSubmatch(string(recipeBytes), -1) {
+		if len(match) != 2 {
+			continue
+		}
+
+		requiredPath := filepath.Join(filepath.Dir(cleanRecipePath), strings.TrimPrefix(match[1], string(filepath.Separator)))
+		childContents, childUnknowns := service.collectDeployerPHPRecipeContents(requiredPath, visited)
+		contents = append(contents, childContents...)
+		unknowns = append(unknowns, childUnknowns...)
+	}
+
+	return contents, unknowns
+}
+
+func (service SnapshotService) parseDeployerYAMLRecipe(recipePath string) ([]deploymentRecipeConfig, []model.Unknown) {
+	recipeBytes, unknown := service.readOptionalFile(recipePath, "Unable to read deployment recipe")
+	if unknown != nil {
+		return nil, []model.Unknown{*unknown}
+	}
+	if len(recipeBytes) == 0 {
+		return nil, nil
+	}
+
+	var recipe struct {
+		Config map[string]string            `yaml:"config"`
+		Hosts  map[string]map[string]string `yaml:"hosts"`
+	}
+	if err := yaml.Unmarshal(recipeBytes, &recipe); err != nil {
+		return nil, []model.Unknown{newParseUnknown(appDiscoveryCheckID, "Unable to parse deployment recipe", recipePath, err)}
+	}
+
+	deployPaths := []string{}
+	if deployPath := strings.TrimSpace(recipe.Config["deploy_path"]); deployPath != "" {
+		deployPaths = append(deployPaths, deployPath)
+	}
+	for _, hostConfig := range recipe.Hosts {
+		if deployPath := strings.TrimSpace(hostConfig["deploy_path"]); deployPath != "" {
+			deployPaths = append(deployPaths, deployPath)
+		}
+	}
+
+	configs := []deploymentRecipeConfig{}
+	for _, deployPath := range uniqueStrings(deployPaths) {
+		configs = append(configs, deploymentRecipeConfig{
+			DeployPath:   deployPath,
+			CurrentPath:  recipe.Config["current_path"],
+			ReleaseRoot:  recipe.Config["release_root"],
+			SharedPath:   recipe.Config["shared_path"],
+			ReleasePath:  recipe.Config["release_path"],
+			ReleasesPath: recipe.Config["releases_path"],
+		})
+	}
+
+	return configs, nil
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	uniqueValues := make([]string, 0, len(values))
+	for _, value := range values {
+		cleanValue := strings.TrimSpace(value)
+		if cleanValue == "" || seen[cleanValue] {
+			continue
+		}
+		seen[cleanValue] = true
+		uniqueValues = append(uniqueValues, cleanValue)
+	}
+
+	return uniqueValues
 }
 
 func isExpectedWritablePHPPath(relativePath string) bool {

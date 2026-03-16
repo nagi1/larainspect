@@ -391,6 +391,46 @@ func TestNginxBoundaryCheckReportsPublicStorageExposureControl(t *testing.T) {
 	}
 }
 
+func TestNginxBoundaryCheckTreatsDeployRootStorageAsExpectedInReleaseLayout(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop/current")
+	setPathRecord(&app, "public/storage", model.PathKindSymlink, 0o770)
+	setPathOwnership(&app, "public/storage", "deploy", "www-data")
+	for index, pathRecord := range app.KeyPaths {
+		if pathRecord.RelativePath != "public/storage" {
+			continue
+		}
+
+		app.KeyPaths[index].ResolvedPath = "/var/www/shop/storage/app/public"
+		app.KeyPaths[index].TargetKind = model.PathKindDirectory
+		break
+	}
+	app.Deployment = model.DeploymentInfo{
+		UsesReleaseLayout: true,
+		CurrentPath:       "/var/www/shop/current",
+		ReleaseRoot:       "/var/www/shop/releases",
+		SharedPath:        "/var/www/shop/shared",
+	}
+
+	result, err := checks.NginxBoundaryCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:           "/etc/nginx/sites-enabled/shop.conf",
+			Root:                 "/var/www/shop/current/public",
+			HiddenFilesDenied:    true,
+			SensitiveFilesDenied: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(result.Findings) != 1 || result.Findings[0].Title != "public/storage makes public-disk files reachable over the web" {
+		t.Fatalf("expected public/storage exposure control finding, got %+v", result.Findings)
+	}
+}
+
 func TestNginxBoundaryCheckReportsConditionalPublicStorageBoundaryWithoutMatchedSite(t *testing.T) {
 	t.Parallel()
 
