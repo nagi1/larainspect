@@ -201,15 +201,23 @@ type NginxSite struct {
 }
 
 type PHPFPMPool struct {
-	ConfigPath  string `json:"config_path"`
-	Name        string `json:"name"`
-	User        string `json:"user,omitempty"`
-	Group       string `json:"group,omitempty"`
-	Listen      string `json:"listen,omitempty"`
-	ListenOwner string `json:"listen_owner,omitempty"`
-	ListenGroup string `json:"listen_group,omitempty"`
-	ListenMode  string `json:"listen_mode,omitempty"`
-	ClearEnv    string `json:"clear_env,omitempty"`
+	ConfigPath              string   `json:"config_path"`
+	Name                    string   `json:"name"`
+	User                    string   `json:"user,omitempty"`
+	Group                   string   `json:"group,omitempty"`
+	Listen                  string   `json:"listen,omitempty"`
+	ListenOwner             string   `json:"listen_owner,omitempty"`
+	ListenGroup             string   `json:"listen_group,omitempty"`
+	ListenMode              string   `json:"listen_mode,omitempty"`
+	ClearEnv                string   `json:"clear_env,omitempty"`
+	CGIFixPathinfo          string   `json:"cgi_fix_pathinfo,omitempty"`
+	SecurityLimitExtensions []string `json:"security_limit_extensions,omitempty"`
+}
+
+type PHPINIConfig struct {
+	ConfigPath     string `json:"config_path"`
+	CGIFixPathinfo string `json:"cgi_fix_pathinfo,omitempty"`
+	ExposePHP      string `json:"expose_php,omitempty"`
 }
 
 type MySQLConfig struct {

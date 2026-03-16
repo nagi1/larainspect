@@ -109,6 +109,31 @@ func (service SnapshotService) discoverPHPFPMPools() ([]model.PHPFPMPool, []mode
 	return pools, unknowns
 }
 
+func (service SnapshotService) discoverPHPINIConfigs() ([]model.PHPINIConfig, []model.Unknown) {
+	configFiles, unknowns := service.readConfigFilesFromPatterns(appDiscoveryCheckID, "Unable to read php.ini config", service.phpINIPatterns)
+	configs := make([]model.PHPINIConfig, 0, len(configFiles))
+
+	for _, configFile := range configFiles {
+		parsedConfig, parseErr := parsePHPINIConfig(configFile.path, string(configFile.contents))
+		if parseErr != nil {
+			unknowns = append(unknowns, newParseUnknown(appDiscoveryCheckID, "Unable to parse php.ini config", configFile.path, parseErr))
+			continue
+		}
+
+		configs = append(configs, parsedConfig)
+	}
+
+	model.SortPHPINIConfigs(configs)
+	return configs, unknowns
+}
+
+func (service SnapshotService) discoverPHPRuntimeConfigs() ([]model.PHPFPMPool, []model.PHPINIConfig, []model.Unknown) {
+	pools, poolUnknowns := service.discoverPHPFPMPools()
+	iniConfigs, iniUnknowns := service.discoverPHPINIConfigs()
+	unknowns := append(poolUnknowns, iniUnknowns...)
+	return pools, iniConfigs, unknowns
+}
+
 func (service SnapshotService) discoverMySQLConfigs() ([]model.MySQLConfig, []model.Unknown) {
 	configFiles, unknowns := service.readConfigFilesFromPatterns(operationalDiscoveryCheckID, "Unable to read MySQL config", service.mysqlPatterns)
 	configs := make([]model.MySQLConfig, 0, len(configFiles))

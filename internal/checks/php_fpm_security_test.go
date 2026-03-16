@@ -199,3 +199,72 @@ func TestPHPFPMSecurityCheckIgnoresRootOnlyNginxServiceIdentity(t *testing.T) {
 		t.Fatalf("expected collapsed socket boundary finding, got %+v", result.Findings)
 	}
 }
+
+func TestPHPFPMSecurityCheckUsesNginxAndPoolExtensionContext(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+
+	result, err := checks.PHPFPMSecurityCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:            "/etc/nginx/sites-enabled/shop.conf",
+			Root:                  "/var/www/shop/public",
+			HasGenericPHPLocation: true,
+			FastCGIPassTargets:    []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath:              "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:                    "shop",
+			User:                    "app-shop",
+			Group:                   "app-shop",
+			Listen:                  "/run/php/shop.sock",
+			ListenOwner:             "www-data",
+			ListenGroup:             "www-data",
+			ListenMode:              "0660",
+			SecurityLimitExtensions: []string{".php", ".phar", ".phtml"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !findingTitleExists(result.Findings, "Nginx and PHP-FPM together allow extra executable PHP extensions") {
+		t.Fatalf("expected broad limit_extensions finding, got %+v", result.Findings)
+	}
+}
+
+func TestPHPFPMSecurityCheckUsesNginxAndPHPINIContext(t *testing.T) {
+	t.Parallel()
+
+	app := completeLaravelApp("/var/www/shop")
+
+	result, err := checks.PHPFPMSecurityCheck{}.Run(context.Background(), model.ExecutionContext{}, model.Snapshot{
+		Apps: []model.LaravelApp{app},
+		NginxSites: []model.NginxSite{{
+			ConfigPath:            "/etc/nginx/sites-enabled/shop.conf",
+			Root:                  "/var/www/shop/public",
+			HasGenericPHPLocation: true,
+			FastCGIPassTargets:    []string{"unix:/run/php/shop.sock"},
+		}},
+		PHPFPMPools: []model.PHPFPMPool{{
+			ConfigPath:  "/etc/php/8.3/fpm/pool.d/shop.conf",
+			Name:        "shop",
+			User:        "app-shop",
+			Group:       "app-shop",
+			Listen:      "/run/php/shop.sock",
+			ListenOwner: "www-data",
+			ListenGroup: "www-data",
+			ListenMode:  "0660",
+		}},
+		PHPINIConfigs: []model.PHPINIConfig{{
+			ConfigPath:     "/etc/php/8.3/fpm/php.ini",
+			CGIFixPathinfo: "1",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !findingTitleExists(result.Findings, "Generic PHP execution is paired with cgi.fix_pathinfo=1") {
+		t.Fatalf("expected cgi.fix_pathinfo context finding, got %+v", result.Findings)
+	}
+}

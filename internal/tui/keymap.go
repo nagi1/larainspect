@@ -10,6 +10,7 @@ type KeyMap struct {
 	Down           key.Binding
 	PanHorizontal  key.Binding
 	JumpHorizontal key.Binding
+	Copy           key.Binding
 	Enter          key.Binding
 	Tab            key.Binding
 	Escape         key.Binding
@@ -45,6 +46,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("home", "end"),
 			key.WithHelp("home/end", "jump pan"),
 		),
+		Copy: key.NewBinding(
+			key.WithKeys("c", "y"),
+			key.WithHelp("c/y", "copy detail"),
+		),
 		Enter: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "select"),
@@ -74,14 +79,14 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp returns bindings for the compact help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Help, k.Quit, k.Tab, k.Up, k.PanHorizontal}
+	return []key.Binding{k.Help, k.Quit, k.Tab, k.Up, k.PanHorizontal, k.Copy}
 }
 
 // FullHelp returns all bindings for the expanded help view.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.PanHorizontal, k.JumpHorizontal},
-		{k.Enter, k.Escape, k.Tab, k.SortFindings},
+		{k.Enter, k.Escape, k.Tab, k.SortFindings, k.Copy},
 		{k.ScrollUp, k.ScrollDown, k.Help, k.Quit},
 	}
 }

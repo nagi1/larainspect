@@ -1,6 +1,7 @@
 package views
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,30 @@ func TestResultsViewHandleKeyFindingsPanelHorizontalPan(t *testing.T) {
 	}
 }
 
+func TestResultsViewFindingsPanelDoesNotPreWrapWideRows(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{
+		Findings: []model.Finding{
+			{
+				Title:      strings.Repeat("WideFindingTitle", 4),
+				Severity:   model.SeverityHigh,
+				Class:      model.FindingClassDirect,
+				CheckID:    "filesystem.permissions.long.check.id",
+				Confidence: model.ConfidenceConfirmed,
+			},
+		},
+		Duration: time.Second,
+	})
+	view.SetSize(84, 24)
+
+	fullView := view.fullTableView()
+	if strings.Contains(fullView, "\nconfirmed") {
+		t.Fatalf("expected offscreen table render to keep each row on one line, got %q", fullView)
+	}
+	if view.maxTableHorizontalOffset() == 0 {
+		t.Fatal("expected horizontal overflow for wide findings row")
+	}
+}
+
 func TestResultsViewHandleKeyDetailPanel(t *testing.T) {
 	view := NewResultsView(testTheme(), ResultsData{
 		Findings: []model.Finding{
@@ -237,6 +262,124 @@ func TestResultsViewHandleKeyDetailPanel(t *testing.T) {
 	view.HandleKey(tea.KeyMsg{Type: tea.KeyRight})
 	if view.detail.View() == initialOffset {
 		t.Error("detail panel should respond to horizontal pan keys when focused")
+	}
+}
+
+func TestResultsViewHandleKeyCopiesDetailPanel(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{
+		Findings: []model.Finding{
+			{
+				Title:       "Debug mode enabled",
+				Severity:    model.SeverityCritical,
+				Class:       model.FindingClassDirect,
+				Confidence:  model.ConfidenceConfirmed,
+				CheckID:     "app-debug",
+				Why:         "Debug output exposes internal state.",
+				Remediation: "Set APP_DEBUG=false.",
+			},
+		},
+		Duration: time.Second,
+	})
+	view.SetSize(100, 30)
+	view.focusPanel = 1
+	view.syncPanelFocus()
+
+	var copied string
+	view.copyDetail = func(text string) error {
+		copied = text
+		return nil
+	}
+
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	if copied == "" {
+		t.Fatal("expected detail copy action to capture clipboard text")
+	}
+	if !strings.Contains(copied, "[CRITICAL] Debug mode enabled") {
+		t.Fatalf("expected copied detail to include finding title, got %q", copied)
+	}
+	if !strings.Contains(view.detail.View(), "Copied finding detail to clipboard.") {
+		t.Fatal("expected detail panel to show copy success status")
+	}
+}
+
+func TestResultsViewHandleKeyCopyDetailFailure(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{
+		Findings: []model.Finding{{
+			Title:      "Debug mode enabled",
+			Severity:   model.SeverityCritical,
+			CheckID:    "app-debug",
+			Class:      model.FindingClassDirect,
+			Confidence: model.ConfidenceConfirmed,
+		}},
+		Duration: time.Second,
+	})
+	view.SetSize(100, 30)
+	view.focusPanel = 1
+	view.syncPanelFocus()
+	view.copyDetail = func(string) error {
+		return errors.New("clipboard unavailable")
+	}
+
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	if !strings.Contains(view.detail.View(), "Copy failed: clipboard unavailable") {
+		t.Fatal("expected detail panel to show copy failure status")
+	}
+}
+
+func TestResultsViewHandleKeyCopyDetailWithoutSelection(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{Duration: time.Second})
+	view.SetSize(100, 30)
+	view.focusPanel = 1
+	view.syncPanelFocus()
+
+	view.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	if !strings.Contains(view.detail.View(), "No finding detail available to copy.") {
+		t.Fatal("expected detail panel to explain that nothing can be copied")
+	}
+}
+
+func TestResultsViewShiftTableHorizontalClampsBounds(t *testing.T) {
+	view := NewResultsView(testTheme(), ResultsData{
+		Findings: []model.Finding{{
+			Title:      strings.Repeat("WideFindingTitle", 4),
+			Severity:   model.SeverityHigh,
+			Class:      model.FindingClassDirect,
+			CheckID:    "filesystem.permissions.long.check.id",
+			Confidence: model.ConfidenceConfirmed,
+		}},
+		Duration: time.Second,
+	})
+	view.SetSize(84, 24)
+
+	view.shiftTableHorizontal(-99)
+	if view.horizontalOffset != 0 {
+		t.Fatalf("horizontalOffset = %d, want 0 after negative clamp", view.horizontalOffset)
+	}
+
+	view.shiftTableHorizontal(999)
+	if view.horizontalOffset != view.maxTableHorizontalOffset() {
+		t.Fatalf("horizontalOffset = %d, want %d after positive clamp", view.horizontalOffset, view.maxTableHorizontalOffset())
+	}
+}
+
+func TestResultsViewRenderUnknownsSummaryShowsOverflowCount(t *testing.T) {
+	unknowns := make([]model.Unknown, 6)
+	for i := range unknowns {
+		unknowns[i] = model.Unknown{Title: "unknown finding"}
+	}
+
+	view := NewResultsView(testTheme(), ResultsData{
+		Unknowns: unknowns,
+		Summary:  model.Summary{Unknowns: len(unknowns)},
+		Duration: time.Second,
+	})
+
+	summary := view.renderUnknownsSummary(100)
+	if !strings.Contains(summary, "and 1 more") {
+		t.Fatalf("expected unknowns summary overflow hint, got %q", summary)
 	}
 }
 

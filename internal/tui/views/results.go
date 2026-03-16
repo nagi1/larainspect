@@ -71,8 +71,10 @@ type ResultsView struct {
 	horizontalOffset int
 
 	// Key bindings (local)
-	tabKey  key.Binding
-	sortKey key.Binding
+	tabKey     key.Binding
+	sortKey    key.Binding
+	copyKey    key.Binding
+	copyDetail func(string) error
 }
 
 // NewResultsView creates a new results view from audit data.
@@ -88,6 +90,10 @@ func NewResultsView(t *theme.Theme, data ResultsData) *ResultsView {
 		sortKey: key.NewBinding(
 			key.WithKeys("s"),
 		),
+		copyKey: key.NewBinding(
+			key.WithKeys("c", "y"),
+		),
+		copyDetail: copyTextToClipboard,
 	}
 	copy(v.findings, data.Findings)
 	v.sortFindings()
@@ -304,6 +310,11 @@ func (v *ResultsView) HandleKey(msg tea.KeyMsg) tea.Cmd {
 		return cmd
 	}
 
+	if v.focusPanel == 1 && key.Matches(msg, v.copyKey) {
+		v.copyFindingDetail()
+		return nil
+	}
+
 	v.detail.HandleKey(msg)
 	return nil
 }
@@ -329,7 +340,7 @@ func (v *ResultsView) View(width, height int) string {
 			panHint = "←→ pan findings: none"
 		}
 	}
-	sortInfo := v.theme.Muted.Render(fmt.Sprintf("  Sorted by: %s %s  |  Focus: %s  |  Tab switch  |  S sort  |  ↑↓ navigate  |  %s",
+	sortInfo := v.theme.Muted.Render(fmt.Sprintf("  Sorted by: %s %s  |  Focus: %s  |  Tab switch  |  S sort  |  C copy detail  |  ↑↓ navigate  |  %s",
 		v.sortColumn.String(), sortDir, panelName(v.focusPanel), panHint))
 
 	tableView := v.renderTable()
@@ -438,7 +449,7 @@ func (v *ResultsView) renderTable() string {
 	}
 
 	contentWidth := maxInt(1, v.table.Width()-2)
-	renderedLines := strings.Split(v.table.View(), "\n")
+	renderedLines := strings.Split(v.fullTableView(), "\n")
 	visibleLines := make([]string, 0, len(renderedLines))
 	for _, line := range renderedLines {
 		visibleLines = append(visibleLines, ansi.Cut(line, v.horizontalOffset, v.horizontalOffset+contentWidth))
@@ -493,11 +504,44 @@ func (v *ResultsView) shiftTableHorizontal(delta int) {
 func (v *ResultsView) maxTableHorizontalOffset() int {
 	visibleWidth := maxInt(1, v.table.Width()-2)
 	maxWidth := 0
-	for _, line := range strings.Split(v.table.View(), "\n") {
+	for _, line := range strings.Split(v.fullTableView(), "\n") {
 		maxWidth = maxInt(maxWidth, ansi.StringWidth(line))
 	}
 
 	return maxInt(0, maxWidth-visibleWidth)
+}
+
+func (v *ResultsView) fullTableView() string {
+	renderModel := v.table
+	renderModel.SetWidth(v.fullTableRenderWidth())
+	return renderModel.View()
+}
+
+func (v *ResultsView) fullTableRenderWidth() int {
+	width := 0
+	for _, column := range v.table.Columns() {
+		if column.Width <= 0 {
+			continue
+		}
+		width += column.Width + 2
+	}
+
+	return maxInt(width, v.table.Width())
+}
+
+func (v *ResultsView) copyFindingDetail() {
+	text := v.detail.PlainText()
+	if strings.TrimSpace(text) == "" {
+		v.detail.SetStatus("No finding detail available to copy.", true)
+		return
+	}
+
+	if err := v.copyDetail(text); err != nil {
+		v.detail.SetStatus(fmt.Sprintf("Copy failed: %v", err), true)
+		return
+	}
+
+	v.detail.SetStatus("Copied finding detail to clipboard.", false)
 }
 
 func truncate(s string, max int) string {

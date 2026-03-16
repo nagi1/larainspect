@@ -75,6 +75,10 @@ func SortPHPFPMPools(pools []PHPFPMPool) {
 	)
 }
 
+func SortPHPINIConfigs(configs []PHPINIConfig) {
+	sortByKey(configs, func(c PHPINIConfig) string { return c.ConfigPath })
+}
+
 func SortMySQLConfigs(configs []MySQLConfig) {
 	sortByTwoKeys(configs,
 		func(c MySQLConfig) string { return c.ConfigPath },

@@ -107,7 +107,7 @@ larainspect init
 larainspect audit
 ```
 
-One command scans your server's filesystem permissions, Nginx config, PHP-FPM pools, cron jobs, queue workers, and your Laravel app source for security misconfigurations — then gives you a clear, prioritized report.
+One command scans your server's filesystem permissions, Nginx config, PHP-FPM pools, php.ini runtime policy, cron jobs, queue workers, and your Laravel app source for security misconfigurations — then gives you a clear, prioritized report.
 
 ## Demo Environment
 
@@ -211,7 +211,7 @@ larainspect audit --scan-root /var/www --scan-root /home/deployer/apps
 | ------------------------------ | --------------------------------------------------------------------------------------------- |
 | **Filesystem permissions**     | Owner/runtime identity split, .env exposure, world-writable paths, storage symlink boundaries |
 | **Nginx boundaries**           | Public docroot validation, dotfile deny rules, PHP passthrough scope, header hardening        |
-| **PHP-FPM security**           | Pool isolation, socket permissions, dangerous PHP directives                                  |
+| **PHP-FPM security**           | Pool isolation, socket permissions, php.ini/runtime flags, Nginx-to-PHP execution boundaries  |
 | **Secrets exposure**           | Leaked credentials in source, .env in public, debug endpoints left enabled                    |
 | **Source config**              | APP_DEBUG, unsafe queue/session drivers, missing encryption keys                              |
 | **Source security**            | Mass assignment risks, unvalidated input, raw SQL, unsafe file handling                       |

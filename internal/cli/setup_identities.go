@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/nagi1/larainspect/internal/model"
+	"github.com/nagi1/larainspect/internal/phpconfig"
 	"github.com/nagi1/larainspect/internal/ux"
 )
 
@@ -342,42 +343,19 @@ func parseNginxUserDirective(contents string) (string, string) {
 }
 
 func parseSetupPHPFPMPools(configPath string, contents string) []setupPHPFPMPool {
-	pools := []setupPHPFPMPool{}
-	var currentPool *setupPHPFPMPool
-
-	for _, line := range strings.Split(contents, "\n") {
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine == "" || strings.HasPrefix(trimmedLine, ";") || strings.HasPrefix(trimmedLine, "#") {
-			continue
-		}
-
-		if sectionName, ok := iniSectionName(trimmedLine); ok {
-			if currentPool != nil {
-				pools = append(pools, *currentPool)
-			}
-			currentPool = &setupPHPFPMPool{ConfigPath: configPath, Name: sectionName}
-			continue
-		}
-
-		if currentPool == nil {
-			continue
-		}
-
-		key, value, ok := strings.Cut(trimmedLine, "=")
-		if !ok {
-			continue
-		}
-
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "user":
-			currentPool.User = strings.TrimSpace(value)
-		case "group":
-			currentPool.Group = strings.TrimSpace(value)
-		}
+	parsedPools, err := phpconfig.ParsePools(configPath, contents)
+	if err != nil {
+		return nil
 	}
 
-	if currentPool != nil {
-		pools = append(pools, *currentPool)
+	pools := make([]setupPHPFPMPool, 0, len(parsedPools))
+	for _, pool := range parsedPools {
+		pools = append(pools, setupPHPFPMPool{
+			ConfigPath: pool.ConfigPath,
+			Name:       pool.Name,
+			User:       pool.User,
+			Group:      pool.Group,
+		})
 	}
 
 	return pools

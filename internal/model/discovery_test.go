@@ -140,6 +140,12 @@ func TestCoreLaravelPathExpectationsAndSortHelpers(t *testing.T) {
 		t.Fatalf("SortPHPFPMPools() did not sort as expected: %+v", pools)
 	}
 
+	phpINIConfigs := []model.PHPINIConfig{{ConfigPath: "b.ini"}, {ConfigPath: "a.ini"}}
+	model.SortPHPINIConfigs(phpINIConfigs)
+	if phpINIConfigs[0].ConfigPath != "a.ini" {
+		t.Fatalf("SortPHPINIConfigs() did not sort as expected: %+v", phpINIConfigs)
+	}
+
 	mysqlConfigs := []model.MySQLConfig{
 		{ConfigPath: "b.cnf", Section: "mysqld"},
 		{ConfigPath: "a.cnf", Section: "client"},

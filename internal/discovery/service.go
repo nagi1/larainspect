@@ -103,6 +103,7 @@ type SnapshotService struct {
 	supervisorCommand  string
 	nginxPatterns      []string
 	phpFPMPatterns     []string
+	phpINIPatterns     []string
 	mysqlPatterns      []string
 	supervisorPatterns []string
 	systemdPatterns    []string
@@ -176,6 +177,14 @@ func NewService() SnapshotService {
 			"/www/server/php/*/etc/php-fpm.conf",
 			"/www/server/php/*/etc/php-fpm.d/*.conf",
 		},
+		phpINIPatterns: []string{
+			"/etc/php/*/fpm/php.ini",
+			"/etc/php.ini",
+			"/etc/opt/remi/php*/php.ini",
+			"/usr/local/etc/php/php.ini",
+			"/www/server/php/*/etc/php.ini",
+			"/opt/cpanel/ea-php*/root/etc/php.ini",
+		},
 		mysqlPatterns: []string{
 			"/etc/mysql/my.cnf",
 			"/etc/mysql/conf.d/*.cnf",
@@ -243,6 +252,7 @@ func NewServiceForAudit(config model.AuditConfig) SnapshotService {
 		service.phpFPMCommands = configuredCommands
 	}
 	service.phpFPMPatterns = config.NormalizedPHPFPMPoolPatterns()
+	service.phpINIPatterns = config.NormalizedPHPINIConfigPatterns()
 	service.mysqlPatterns = config.NormalizedMySQLConfigPatterns()
 	if configuredCommand := config.NormalizedSupervisorBinary(); configuredCommand != "" {
 		service.supervisorCommand = configuredCommand
@@ -401,8 +411,11 @@ func (service SnapshotService) appendServiceConfigs(ctx context.Context, config 
 		return u, func() { snapshot.NginxSites = items }
 	})
 	launchDiscover(service.discoverPHPFPM, func() ([]model.Unknown, func()) {
-		items, u := service.discoverPHPFPMPools()
-		return u, func() { snapshot.PHPFPMPools = items }
+		pools, iniConfigs, u := service.discoverPHPRuntimeConfigs()
+		return u, func() {
+			snapshot.PHPFPMPools = pools
+			snapshot.PHPINIConfigs = iniConfigs
+		}
 	})
 	launchDiscover(service.discoverMySQL, func() ([]model.Unknown, func()) {
 		items, u := service.discoverMySQLConfigs()

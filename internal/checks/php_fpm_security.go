@@ -73,6 +73,10 @@ func (PHPFPMSecurityCheck) Run(_ context.Context, execution model.ExecutionConte
 		findings = append(findings, sharedRuntimeUserFinding)
 	}
 
+	for _, app := range snapshot.Apps {
+		findings = append(findings, buildContextualPHPRuntimeFindings(app, snapshot)...)
+	}
+
 	return model.CheckResult{Findings: findings}, nil
 }
 

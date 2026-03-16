@@ -36,6 +36,7 @@ identities:
 # Service config discovery. Leave paths empty to use built-in defaults.
 # If larainspect reports that a binary was not found on PATH, set the exact
 # full path here rather than disabling the service check.
+# Use paths.php_ini_patterns when your host keeps php.ini outside the common defaults.
 services:
   use_default_paths: true
   nginx:
@@ -76,6 +77,12 @@ advanced:
   command_timeout: 2s
   max_output_bytes: 65536
   worker_limit: 4
+
+# Optional explicit path overrides.
+# paths:
+#   php_ini_patterns:
+#     - "/etc/php/*/fpm/php.ini"
+#     - "/www/server/php/*/etc/php.ini"
 
 # Rule engine configuration.
 rules:

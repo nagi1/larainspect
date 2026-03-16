@@ -147,21 +147,6 @@ func TestFirstOutputLine(t *testing.T) {
 	}
 }
 
-func TestMatchesDirectiveBoundary(t *testing.T) {
-	t.Parallel()
-
-	content := "server { listen 80; }"
-	if !matchesDirectiveBoundary(content, 0, 6) {
-		t.Error("expected true for 'server' at start")
-	}
-	if !matchesDirectiveBoundary(content, 9, 6) {
-		t.Error("expected true for 'listen' as a word")
-	}
-	if matchesDirectiveBoundary("superserver { }", 5, 6) {
-		t.Error("expected false for 'server' embedded in 'superserver'")
-	}
-}
-
 func TestComposerRequirement(t *testing.T) {
 	t.Parallel()
 

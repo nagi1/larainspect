@@ -437,6 +437,7 @@ func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
 		AppScanRoots:             []string{"/srv/apps", "/opt/apps"},
 		NginxConfigPatterns:      []string{"/etc/nginx/custom/*.conf"},
 		PHPFPMPoolPatterns:       []string{"/etc/php/custom/*.conf"},
+		PHPINIConfigPatterns:     []string{"/etc/php/custom/php.ini"},
 		MySQLConfigPatterns:      []string{"/etc/mysql/custom/*.cnf"},
 		SupervisorConfigPatterns: []string{"/etc/supervisor/custom/*.conf"},
 		SystemdUnitPatterns:      []string{"/etc/systemd/custom/*.service"},
@@ -455,7 +456,7 @@ func TestApplyPathsAndSwitchesSectionsApplyAllOverrides(t *testing.T) {
 	if len(config.Profile.Paths.AppScanRoots) != 2 || len(config.Profile.Paths.NginxConfigPatterns) != 1 {
 		t.Fatalf("unexpected path overrides: %+v", config.Profile.Paths)
 	}
-	if len(config.Profile.Paths.PHPFPMPoolPatterns) != 1 || len(config.Profile.Paths.MySQLConfigPatterns) != 1 || len(config.Profile.Paths.SupervisorConfigPatterns) != 1 || len(config.Profile.Paths.SystemdUnitPatterns) != 1 {
+	if len(config.Profile.Paths.PHPFPMPoolPatterns) != 1 || len(config.Profile.Paths.PHPINIConfigPatterns) != 1 || len(config.Profile.Paths.MySQLConfigPatterns) != 1 || len(config.Profile.Paths.SupervisorConfigPatterns) != 1 || len(config.Profile.Paths.SystemdUnitPatterns) != 1 {
 		t.Fatalf("unexpected service path overrides: %+v", config.Profile.Paths)
 	}
 	if config.ShouldDiscoverNginx() || config.ShouldDiscoverPHPFPM() || config.ShouldDiscoverMySQL() || config.ShouldDiscoverSupervisor() || config.ShouldDiscoverSystemd() {

@@ -37,7 +37,7 @@ func (service SnapshotService) discoverNginxSites(ctx context.Context) ([]model.
 	sites := make([]model.NginxSite, 0, len(configFiles))
 
 	for _, configFile := range configFiles {
-		parsedSites, parseErr := parseNginxSites(configFile.path, string(configFile.contents))
+		parsedSites, parseErr := parseNginxSitesResolving(configFile.path, configFile.contents, service.readFile, service.globPaths)
 		if parseErr != nil {
 			unknowns = append(unknowns, newParseUnknown(appDiscoveryCheckID, "Unable to parse Nginx config", configFile.path, parseErr))
 			continue
@@ -112,7 +112,7 @@ func (service SnapshotService) discoverNginxSitesFromCommand(ctx context.Context
 		return nil, nil, true
 	}
 
-	sites, parseErr := parseNginxSites("nginx -T", combinedOutput)
+	sites, parseErr := parseNginxDump(combinedOutput)
 	if parseErr != nil {
 		unknown := newParseUnknown(appDiscoveryCheckID, "Unable to parse Nginx config", resolvedCommand+" -T", parseErr)
 		unknown.Evidence = []model.Evidence{{Label: "command", Detail: commandSummary(request)}}

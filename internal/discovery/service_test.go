@@ -16,6 +16,7 @@ func newTestSnapshotService() SnapshotService {
 	service := NewService()
 	service.nginxPatterns = nil
 	service.phpFPMPatterns = nil
+	service.phpINIPatterns = nil
 	service.mysqlPatterns = nil
 	service.supervisorPatterns = nil
 	service.systemdPatterns = nil

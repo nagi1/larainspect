@@ -35,6 +35,9 @@ func TestDefaultKeyMapBindings(t *testing.T) {
 	if !key.Matches(teaKey("left"), km.PanHorizontal) || !key.Matches(teaKey("home"), km.JumpHorizontal) {
 		t.Error("keymap should advertise horizontal pan bindings")
 	}
+	if !key.Matches(teaKey("c"), km.Copy) || !key.Matches(teaKey("y"), km.Copy) {
+		t.Error("keymap should advertise copy-detail bindings")
+	}
 }
 
 func teaKey(keyName string) keyEventLike {

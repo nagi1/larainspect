@@ -23,6 +23,8 @@ type FindingDetail struct {
 	focused          bool
 	horizontalOffset int
 	contentLines     []string
+	statusMessage    string
+	statusIsError    bool
 }
 
 // NewFindingDetail creates a new finding detail panel.
@@ -34,6 +36,8 @@ func NewFindingDetail(t *theme.Theme) *FindingDetail {
 // SetFinding sets the finding to display.
 func (d *FindingDetail) SetFinding(f *model.Finding) {
 	d.finding = f
+	d.statusMessage = ""
+	d.statusIsError = false
 	d.rebuildContent()
 }
 
@@ -49,6 +53,12 @@ func (d *FindingDetail) SetSize(w, h int) {
 // SetFocused updates the focus state for styling and hints.
 func (d *FindingDetail) SetFocused(focused bool) {
 	d.focused = focused
+}
+
+// SetStatus shows a short status line below the navigation hint.
+func (d *FindingDetail) SetStatus(message string, isError bool) {
+	d.statusMessage = message
+	d.statusIsError = isError
 }
 
 // HandleKey processes scrolling keys.
@@ -151,8 +161,65 @@ func (d *FindingDetail) View() string {
 
 	title := d.theme.Subtitle.Render("  Finding Detail")
 	hint := d.theme.Muted.Render(d.navigationHint())
-	content := lipgloss.JoinVertical(lipgloss.Left, title, hint, "", d.viewport.View())
+	rows := []string{title, hint}
+	if d.statusMessage != "" {
+		statusStyle := d.theme.SuccessStyle
+		if d.statusIsError {
+			statusStyle = d.theme.ErrorStyle
+		}
+		rows = append(rows, statusStyle.Render("  "+d.statusMessage))
+	}
+	rows = append(rows, "", d.viewport.View())
+	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	return border.Render(content)
+}
+
+// PlainText returns the full finding detail in a copy-friendly text format.
+func (d *FindingDetail) PlainText() string {
+	if d.finding == nil {
+		return ""
+	}
+
+	f := d.finding
+	lines := []string{
+		fmt.Sprintf("[%s] %s", strings.ToUpper(string(f.Severity)), f.Title),
+		fmt.Sprintf("Class: %s", f.Class),
+		fmt.Sprintf("Confidence: %s", f.Confidence),
+		fmt.Sprintf("Check: %s", f.CheckID),
+	}
+
+	if f.Why != "" {
+		lines = append(lines, "", "Why", f.Why)
+	}
+
+	if len(f.Evidence) > 0 {
+		lines = append(lines, "", "Evidence")
+		for _, ev := range f.Evidence {
+			lines = append(lines, fmt.Sprintf("- %s: %s", ev.Label, ev.Detail))
+		}
+	}
+
+	if len(f.Affected) > 0 {
+		lines = append(lines, "", "Affected Targets")
+		for _, target := range f.Affected {
+			lines = append(lines, "- "+formatTargetLine(target))
+		}
+	}
+
+	relatedControls := controls.ForFinding(f.CheckID, f.ID)
+	if len(relatedControls) > 0 {
+		lines = append(lines, "", "Controls")
+		for _, control := range relatedControls {
+			lines = append(lines, fmt.Sprintf("- %s [%s]", control.ID, control.Status))
+			lines = append(lines, "  "+control.Name)
+		}
+	}
+
+	if f.Remediation != "" {
+		lines = append(lines, "", "Remediation", f.Remediation)
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func wordWrap(text string, width int) string {
@@ -280,10 +347,10 @@ func (d *FindingDetail) refreshViewportContent() {
 
 func (d *FindingDetail) navigationHint() string {
 	if maxOffset := d.maxHorizontalOffset(); maxOffset > 0 {
-		return fmt.Sprintf("  Scroll: ↑↓  Pan: ←→ (%d/%d)  Home/End  Tab: switch panel", d.horizontalOffset, maxOffset)
+		return fmt.Sprintf("  Scroll: ↑↓  Pan: ←→ (%d/%d)  Home/End  C/Y: copy  Tab: switch panel", d.horizontalOffset, maxOffset)
 	}
 
-	return "  Scroll: ↑↓  Pan: none  Tab: switch panel"
+	return "  Scroll: ↑↓  Pan: none  C/Y: copy  Tab: switch panel"
 }
 
 func visibleLine(line string, offset int, width int) string {

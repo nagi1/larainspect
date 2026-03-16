@@ -12,98 +12,6 @@ import (
 	"github.com/nagi1/larainspect/internal/model"
 )
 
-func TestParseNginxSitesParsesRelevantLaravelSignals(t *testing.T) {
-	t.Parallel()
-
-	sites, err := parseNginxSites("/etc/nginx/sites-enabled/shop.conf", `
-server {
-    server_name shop.test;
-    root /var/www/shop/public;
-    index index.php index.html;
-
-    location = /index.php {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-
-    location ~* \.(env|sql|zip)$ {
-        return 404;
-    }
-
-    location ~ ^/uploads/.*\.php$ {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-}
-`)
-	if err != nil {
-		t.Fatalf("parseNginxSites() error = %v", err)
-	}
-
-	if len(sites) != 1 {
-		t.Fatalf("expected 1 site, got %+v", sites)
-	}
-
-	site := sites[0]
-	if !site.HasGenericPHPLocation || !site.HasFrontControllerOnly || !site.HiddenFilesDenied || !site.SensitiveFilesDenied || !site.UploadExecutionAllowed {
-		t.Fatalf("expected parsed nginx protections and execution signals, got %+v", site)
-	}
-
-	if len(site.FastCGIPassTargets) != 1 || site.FastCGIPassTargets[0] != "unix:/run/php/shop.sock" {
-		t.Fatalf("unexpected fastcgi_pass targets: %+v", site.FastCGIPassTargets)
-	}
-}
-
-func TestParseNginxSitesRecognizesAlternateExecutablePHPExtensions(t *testing.T) {
-	t.Parallel()
-
-	sites, err := parseNginxSites("/etc/nginx/sites-enabled/shop.conf", `
-server {
-    root /var/www/shop/public;
-
-    location = /index.php {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-
-    location ~* \.(php|phtml|phar)$ {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-
-    location ~ ^/uploads/.*\.(phtml|phar)$ {
-        fastcgi_pass unix:/run/php/shop.sock;
-    }
-}
-`)
-	if err != nil {
-		t.Fatalf("parseNginxSites() error = %v", err)
-	}
-	if len(sites) != 1 {
-		t.Fatalf("expected 1 site, got %+v", sites)
-	}
-
-	site := sites[0]
-	if !site.HasGenericPHPLocation {
-		t.Fatalf("expected alternate executable php extensions to count as generic php handling, got %+v", site)
-	}
-	if !site.UploadExecutionAllowed {
-		t.Fatalf("expected upload-adjacent alternate php extensions to count as upload execution, got %+v", site)
-	}
-}
-
-func TestParseNginxSitesRejectsUnbalancedConfig(t *testing.T) {
-	t.Parallel()
-
-	if _, err := parseNginxSites("/etc/nginx/nginx.conf", "server {"); err == nil {
-		t.Fatal("expected nginx parse error for unbalanced braces")
-	}
-}
-
 func TestParsePHPFPMPoolsParsesPoolDefinitions(t *testing.T) {
 	t.Parallel()
 
@@ -138,12 +46,96 @@ func TestParsePHPFPMPoolsRejectsEmptySectionName(t *testing.T) {
 	}
 }
 
+func TestParsePHPFPMPoolsStripsInlineComments(t *testing.T) {
+	t.Parallel()
+
+	pools, err := parsePHPFPMPools("/etc/php/8.3/fpm/pool.d/www.conf", `
+[www]
+listen = /run/php/www.sock ; this is the socket path
+listen.mode = 0660 ; octal permissions
+user = www-data
+`)
+	if err != nil {
+		t.Fatalf("parsePHPFPMPools() error = %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %+v", pools)
+	}
+	if pools[0].Listen != "/run/php/www.sock" {
+		t.Fatalf("expected inline comment stripped from listen, got %q", pools[0].Listen)
+	}
+	if pools[0].ListenMode != "0660" {
+		t.Fatalf("expected inline comment stripped from listen.mode, got %q", pools[0].ListenMode)
+	}
+}
+
+func TestParsePHPFPMPoolsHandlesQuotedValues(t *testing.T) {
+	t.Parallel()
+
+	pools, err := parsePHPFPMPools("/etc/php/8.3/fpm/pool.d/www.conf", `
+[www]
+user = "www-data"
+listen = '/run/php/www.sock'
+`)
+	if err != nil {
+		t.Fatalf("parsePHPFPMPools() error = %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %+v", pools)
+	}
+	if pools[0].User != "www-data" {
+		t.Fatalf("expected quotes stripped from user, got %q", pools[0].User)
+	}
+	if pools[0].Listen != "/run/php/www.sock" {
+		t.Fatalf("expected quotes stripped from listen, got %q", pools[0].Listen)
+	}
+}
+
+func TestParsePHPFPMPoolsParsesExecutionControls(t *testing.T) {
+	t.Parallel()
+
+	pools, err := parsePHPFPMPools("/etc/php/8.3/fpm/pool.d/www.conf", `
+[www]
+security.limit_extensions = .php .phar
+php_admin_value[cgi.fix_pathinfo] = 1
+`)
+	if err != nil {
+		t.Fatalf("parsePHPFPMPools() error = %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %+v", pools)
+	}
+	if pools[0].CGIFixPathinfo != "1" {
+		t.Fatalf("expected cgi.fix_pathinfo override, got %+v", pools[0])
+	}
+	if len(pools[0].SecurityLimitExtensions) != 2 {
+		t.Fatalf("expected parsed security.limit_extensions, got %+v", pools[0].SecurityLimitExtensions)
+	}
+}
+
+func TestParsePHPINIConfigParsesRelevantRuntimeFlags(t *testing.T) {
+	t.Parallel()
+
+	runtimeConfig, err := parsePHPINIConfig("/etc/php/8.3/fpm/php.ini", `
+[PHP]
+cgi.fix_pathinfo = 1
+expose_php = On
+`)
+	if err != nil {
+		t.Fatalf("parsePHPINIConfig() error = %v", err)
+	}
+	if runtimeConfig.CGIFixPathinfo != "1" || runtimeConfig.ExposePHP != "On" {
+		t.Fatalf("unexpected parsed php.ini config: %+v", runtimeConfig)
+	}
+}
+
 func TestSnapshotServiceDiscoversNginxAndPHPFPMConfigs(t *testing.T) {
 	t.Parallel()
 
 	configRoot := t.TempDir()
 	nginxConfigPath := filepath.Join(configRoot, "nginx", "shop.conf")
 	phpFPMConfigPath := filepath.Join(configRoot, "php-fpm", "shop.conf")
+	phpINIConfigPath := filepath.Join(configRoot, "php", "php.ini")
 
 	if err := os.MkdirAll(filepath.Dir(nginxConfigPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(nginx) error = %v", err)
@@ -151,13 +143,18 @@ func TestSnapshotServiceDiscoversNginxAndPHPFPMConfigs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(phpFPMConfigPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(php-fpm) error = %v", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(phpINIConfigPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(php.ini) error = %v", err)
+	}
 
 	writeTestFile(t, nginxConfigPath, "server { root /var/www/shop/public; location ~ \\.php$ { fastcgi_pass unix:/run/php/shop.sock; } }")
 	writeTestFile(t, phpFPMConfigPath, "[shop]\nuser = www-data\nlisten = /run/php/shop.sock\nlisten.mode = 0660\n")
+	writeTestFile(t, phpINIConfigPath, "[PHP]\ncgi.fix_pathinfo = 0\n")
 
 	service := newTestSnapshotService()
 	service.nginxPatterns = []string{nginxConfigPath}
 	service.phpFPMPatterns = []string{phpFPMConfigPath}
+	service.phpINIPatterns = []string{phpINIConfigPath}
 
 	snapshot, unknowns, err := service.Discover(context.Background(), model.ExecutionContext{
 		Config: model.AuditConfig{Scope: model.ScanScopeHost},
@@ -170,8 +167,8 @@ func TestSnapshotServiceDiscoversNginxAndPHPFPMConfigs(t *testing.T) {
 		t.Fatalf("expected no unknowns, got %+v", unknowns)
 	}
 
-	if len(snapshot.NginxSites) != 1 || len(snapshot.PHPFPMPools) != 1 {
-		t.Fatalf("expected discovered nginx and php-fpm configs, got %+v %+v", snapshot.NginxSites, snapshot.PHPFPMPools)
+	if len(snapshot.NginxSites) != 1 || len(snapshot.PHPFPMPools) != 1 || len(snapshot.PHPINIConfigs) != 1 {
+		t.Fatalf("expected discovered nginx, php-fpm, and php.ini configs, got %+v %+v %+v", snapshot.NginxSites, snapshot.PHPFPMPools, snapshot.PHPINIConfigs)
 	}
 }
 
@@ -384,10 +381,6 @@ func TestEnvironmentAndPathHelpersCoverEdgeCases(t *testing.T) {
 		t.Fatalf("normalizeEnvironmentValue() = %q", got)
 	}
 
-	if got := stripPHPFPMComments("; comment only\n# another\nlisten = /run/php.sock\n"); got == "" || !containsLine(got, "listen = /run/php.sock") {
-		t.Fatalf("stripPHPFPMComments() removed directive unexpectedly: %q", got)
-	}
-
 	if classifyFilesystemError(errors.New("boom")) != model.ErrorKindNotEnoughData {
 		t.Fatal("expected default filesystem error classification")
 	}
@@ -522,14 +515,4 @@ func TestCollectArtifactRecordsCapturesPublicSymlinkArtifacts(t *testing.T) {
 	if len(artifacts) != 1 || artifacts[0].Kind != model.ArtifactKindPublicSymlink {
 		t.Fatalf("expected public symlink artifact, got %+v", artifacts)
 	}
-}
-
-func containsLine(contents string, targetLine string) bool {
-	for _, line := range strings.Split(contents, "\n") {
-		if strings.TrimSpace(line) == targetLine {
-			return true
-		}
-	}
-
-	return false
 }

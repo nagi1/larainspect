@@ -17,18 +17,18 @@ import (
 )
 
 type fileConfig struct {
-	Version  *int                `json:"version,omitempty" yaml:"version,omitempty"`
-	Server   *fileServerConfig   `json:"server,omitempty" yaml:"server,omitempty"`
-	Laravel  *fileLaravelConfig  `json:"laravel,omitempty" yaml:"laravel,omitempty"`
+	Version    *int                  `json:"version,omitempty" yaml:"version,omitempty"`
+	Server     *fileServerConfig     `json:"server,omitempty" yaml:"server,omitempty"`
+	Laravel    *fileLaravelConfig    `json:"laravel,omitempty" yaml:"laravel,omitempty"`
 	Identities *fileIdentitiesConfig `json:"identities,omitempty" yaml:"identities,omitempty"`
-	Services *fileServicesConfig `json:"services,omitempty" yaml:"services,omitempty"`
-	Output   *fileOutputConfig   `json:"output,omitempty" yaml:"output,omitempty"`
-	Advanced *fileAdvancedConfig `json:"advanced,omitempty" yaml:"advanced,omitempty"`
-	Audit    *fileAuditConfig    `json:"audit,omitempty" yaml:"audit,omitempty"`
-	Profile  *fileProfileConfig  `json:"profile,omitempty" yaml:"profile,omitempty"`
-	Paths    *filePathsConfig    `json:"paths,omitempty" yaml:"paths,omitempty"`
-	Rules    *fileRulesConfig    `json:"rules,omitempty" yaml:"rules,omitempty"`
-	Switches *fileSwitchesConfig `json:"switches,omitempty" yaml:"switches,omitempty"`
+	Services   *fileServicesConfig   `json:"services,omitempty" yaml:"services,omitempty"`
+	Output     *fileOutputConfig     `json:"output,omitempty" yaml:"output,omitempty"`
+	Advanced   *fileAdvancedConfig   `json:"advanced,omitempty" yaml:"advanced,omitempty"`
+	Audit      *fileAuditConfig      `json:"audit,omitempty" yaml:"audit,omitempty"`
+	Profile    *fileProfileConfig    `json:"profile,omitempty" yaml:"profile,omitempty"`
+	Paths      *filePathsConfig      `json:"paths,omitempty" yaml:"paths,omitempty"`
+	Rules      *fileRulesConfig      `json:"rules,omitempty" yaml:"rules,omitempty"`
+	Switches   *fileSwitchesConfig   `json:"switches,omitempty" yaml:"switches,omitempty"`
 }
 
 type fileServerConfig struct {
@@ -110,6 +110,7 @@ type filePathsConfig struct {
 	AppScanRoots             []string `json:"app_scan_roots,omitempty" yaml:"app_scan_roots,omitempty"`
 	NginxConfigPatterns      []string `json:"nginx_config_patterns,omitempty" yaml:"nginx_config_patterns,omitempty"`
 	PHPFPMPoolPatterns       []string `json:"php_fpm_pool_patterns,omitempty" yaml:"php_fpm_pool_patterns,omitempty"`
+	PHPINIConfigPatterns     []string `json:"php_ini_patterns,omitempty" yaml:"php_ini_patterns,omitempty"`
 	MySQLConfigPatterns      []string `json:"mysql_config_patterns,omitempty" yaml:"mysql_config_patterns,omitempty"`
 	SupervisorConfigPatterns []string `json:"supervisor_config_patterns,omitempty" yaml:"supervisor_config_patterns,omitempty"`
 	SystemdUnitPatterns      []string `json:"systemd_unit_patterns,omitempty" yaml:"systemd_unit_patterns,omitempty"`
@@ -503,6 +504,9 @@ func applyPathsSection(config *model.AuditConfig, pathsConfig filePathsConfig) {
 	}
 	if pathsConfig.PHPFPMPoolPatterns != nil {
 		config.Profile.Paths.PHPFPMPoolPatterns = cloneStrings(pathsConfig.PHPFPMPoolPatterns)
+	}
+	if pathsConfig.PHPINIConfigPatterns != nil {
+		config.Profile.Paths.PHPINIConfigPatterns = cloneStrings(pathsConfig.PHPINIConfigPatterns)
 	}
 	if pathsConfig.MySQLConfigPatterns != nil {
 		config.Profile.Paths.MySQLConfigPatterns = cloneStrings(pathsConfig.MySQLConfigPatterns)

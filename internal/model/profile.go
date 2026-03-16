@@ -28,6 +28,7 @@ type DiscoveryPaths struct {
 	AppScanRoots             []string
 	NginxConfigPatterns      []string
 	PHPFPMPoolPatterns       []string
+	PHPINIConfigPatterns     []string
 	MySQLConfigPatterns      []string
 	SupervisorConfigPatterns []string
 	SystemdUnitPatterns      []string
@@ -119,6 +120,10 @@ func (config AuditConfig) NormalizedNginxConfigPatterns() []string {
 
 func (config AuditConfig) NormalizedPHPFPMPoolPatterns() []string {
 	return config.effectivePatternList(defaultPHPFPMPoolPatterns(config.NormalizedOSFamily()), config.Profile.Paths.PHPFPMPoolPatterns)
+}
+
+func (config AuditConfig) NormalizedPHPINIConfigPatterns() []string {
+	return config.effectivePatternList(defaultPHPINIConfigPatterns(config.NormalizedOSFamily()), config.Profile.Paths.PHPINIConfigPatterns)
 }
 
 func (config AuditConfig) NormalizedMySQLConfigPatterns() []string {
@@ -301,6 +306,35 @@ func defaultPHPFPMPoolPatterns(osFamily string) []string {
 			"/usr/local/etc/php-fpm.d/*.conf",
 			"/www/server/php/*/etc/php-fpm.conf",
 			"/www/server/php/*/etc/php-fpm.d/*.conf",
+		}
+	}
+}
+
+func defaultPHPINIConfigPatterns(osFamily string) []string {
+	switch osFamily {
+	case "debian":
+		return []string{
+			"/etc/php/*/fpm/php.ini",
+			"/usr/local/etc/php/php.ini",
+			"/www/server/php/*/etc/php.ini",
+			"/opt/cpanel/ea-php*/root/etc/php.ini",
+		}
+	case "rhel":
+		return []string{
+			"/etc/php.ini",
+			"/etc/opt/remi/php*/php.ini",
+			"/usr/local/etc/php/php.ini",
+			"/www/server/php/*/etc/php.ini",
+			"/opt/cpanel/ea-php*/root/etc/php.ini",
+		}
+	default:
+		return []string{
+			"/etc/php/*/fpm/php.ini",
+			"/etc/php.ini",
+			"/etc/opt/remi/php*/php.ini",
+			"/usr/local/etc/php/php.ini",
+			"/www/server/php/*/etc/php.ini",
+			"/opt/cpanel/ea-php*/root/etc/php.ini",
 		}
 	}
 }

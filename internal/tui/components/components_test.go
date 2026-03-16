@@ -325,6 +325,141 @@ func TestFindingDetailWithFinding(t *testing.T) {
 	}
 }
 
+func TestFindingDetailViewShowsStatusMessage(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+	detail.SetSize(60, 20)
+	detail.SetStatus("Copied finding detail to clipboard.", false)
+
+	out := detail.View()
+	if !strings.Contains(out, "Copied finding detail to clipboard.") {
+		t.Fatalf("expected success status in view, got %q", out)
+	}
+}
+
+func TestFindingDetailPlainTextIncludesSections(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+	detail.SetFinding(&model.Finding{
+		ID:          "filesystem.permissions.runtime_owned_env.var.www.shop.env",
+		Title:       "Debug mode enabled",
+		Severity:    model.SeverityCritical,
+		Class:       model.FindingClassDirect,
+		Confidence:  model.ConfidenceConfirmed,
+		CheckID:     "app-debug",
+		Why:         "This should not be enabled in production.",
+		Remediation: "Set APP_DEBUG=false.",
+		Evidence: []model.Evidence{
+			{Label: "File", Detail: ".env"},
+		},
+		Affected: []model.Target{
+			{Type: "file", Name: ".env", Path: "/srv/app/.env"},
+		},
+	})
+
+	text := detail.PlainText()
+	for _, needle := range []string{
+		"[CRITICAL] Debug mode enabled",
+		"Why",
+		"Evidence",
+		"- File: .env",
+		"Affected Targets",
+		"- [file] .env /srv/app/.env",
+		"Remediation",
+		"Set APP_DEBUG=false.",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("PlainText() missing %q in %q", needle, text)
+		}
+	}
+}
+
+func TestFindingDetailPlainTextEmptyWhenUnset(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+
+	if text := detail.PlainText(); text != "" {
+		t.Fatalf("PlainText() = %q, want empty", text)
+	}
+}
+
+func TestFindingDetailHandleKeyHomeAndEnd(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+	detail.SetSize(30, 12)
+	detail.SetFinding(&model.Finding{
+		Title:      strings.Repeat("Long detail title ", 4),
+		Severity:   model.SeverityHigh,
+		Class:      model.FindingClassDirect,
+		CheckID:    "detail-panel",
+		Confidence: model.ConfidenceConfirmed,
+	})
+
+	detail.HandleKey(tea.KeyMsg{Type: tea.KeyEnd})
+	if detail.horizontalOffset != detail.maxHorizontalOffset() {
+		t.Fatalf("horizontalOffset = %d, want %d after End", detail.horizontalOffset, detail.maxHorizontalOffset())
+	}
+
+	detail.HandleKey(tea.KeyMsg{Type: tea.KeyHome})
+	if detail.horizontalOffset != 0 {
+		t.Fatalf("horizontalOffset = %d, want 0 after Home", detail.horizontalOffset)
+	}
+}
+
+func TestFindingDetailNavigationHintWithoutOverflow(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+	detail.SetSize(80, 20)
+	detail.SetFinding(&model.Finding{
+		Title:      "Short title",
+		Severity:   model.SeverityLow,
+		Class:      model.FindingClassDirect,
+		CheckID:    "short",
+		Confidence: model.ConfidenceConfirmed,
+	})
+
+	hint := detail.navigationHint()
+	if !strings.Contains(hint, "Pan: none") {
+		t.Fatalf("expected no-pan hint, got %q", hint)
+	}
+	if !strings.Contains(hint, "C/Y: copy") {
+		t.Fatalf("expected copy hint, got %q", hint)
+	}
+}
+
+func TestSplitAtRunesHandlesZeroAndOverflow(t *testing.T) {
+	left, right := splitAtRunes("hello", 0)
+	if left != "" || right != "hello" {
+		t.Fatalf("splitAtRunes zero width = (%q, %q)", left, right)
+	}
+
+	left, right = splitAtRunes("hello", 2)
+	if left != "he" || right != "llo" {
+		t.Fatalf("splitAtRunes overflow = (%q, %q)", left, right)
+	}
+}
+
+func TestVisibleLineReturnsEmptyPastEnd(t *testing.T) {
+	if visible := visibleLine("hello", 10, 5); visible != "" {
+		t.Fatalf("visibleLine() = %q, want empty", visible)
+	}
+}
+
+func TestFindingDetailViewShowsErrorStatusWithoutFinding(t *testing.T) {
+	th := testTheme()
+	detail := NewFindingDetail(th)
+	detail.SetSize(60, 20)
+	detail.SetStatus("Copy failed: clipboard unavailable", true)
+
+	out := detail.View()
+	if !strings.Contains(out, "Copy failed: clipboard unavailable") {
+		t.Fatalf("expected error status in view, got %q", out)
+	}
+	if !strings.Contains(out, "Select a finding to view details.") {
+		t.Fatalf("expected empty detail prompt in view, got %q", out)
+	}
+}
+
 func TestWordWrap(t *testing.T) {
 	tests := []struct {
 		text  string

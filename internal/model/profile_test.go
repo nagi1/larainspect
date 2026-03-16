@@ -61,6 +61,21 @@ func TestProfileHelpersNormalizeOSFamilyAndPatterns(t *testing.T) {
 		t.Fatalf("expected aaPanel php-fpm main config pattern, got %+v", phpPatterns)
 	}
 
+	phpINIPatterns := config.NormalizedPHPINIConfigPatterns()
+	if len(phpINIPatterns) == 0 {
+		t.Fatal("expected php.ini patterns to be available")
+	}
+	foundPHPRuntimeINI := false
+	for _, pattern := range phpINIPatterns {
+		if pattern == "/etc/php.ini" {
+			foundPHPRuntimeINI = true
+			break
+		}
+	}
+	if !foundPHPRuntimeINI {
+		t.Fatalf("expected rhel-family php.ini pattern, got %+v", phpINIPatterns)
+	}
+
 	mysqlPatterns := config.NormalizedMySQLConfigPatterns()
 	foundMySQLPattern := false
 	for _, pattern := range mysqlPatterns {
@@ -80,10 +95,15 @@ func TestProfileHelpersAllowReplacingDefaultPatterns(t *testing.T) {
 	config := model.DefaultAuditConfig()
 	config.Profile.Paths.UseDefaultPatterns = false
 	config.Profile.Paths.PHPFPMPoolPatterns = []string{"/srv/php/pools/*.conf"}
+	config.Profile.Paths.PHPINIConfigPatterns = []string{"/srv/php/php.ini"}
 
 	patterns := config.NormalizedPHPFPMPoolPatterns()
 	if len(patterns) != 1 || patterns[0] != "/srv/php/pools/*.conf" {
 		t.Fatalf("NormalizedPHPFPMPoolPatterns() = %+v", patterns)
+	}
+	phpINIPatterns := config.NormalizedPHPINIConfigPatterns()
+	if len(phpINIPatterns) != 1 || phpINIPatterns[0] != "/srv/php/php.ini" {
+		t.Fatalf("NormalizedPHPINIConfigPatterns() = %+v", phpINIPatterns)
 	}
 }
 

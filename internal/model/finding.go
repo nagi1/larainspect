@@ -231,6 +231,7 @@ type Snapshot struct {
 	Apps                  []LaravelApp              `json:"apps,omitempty"`
 	NginxSites            []NginxSite               `json:"nginx_sites,omitempty"`
 	PHPFPMPools           []PHPFPMPool              `json:"php_fpm_pools,omitempty"`
+	PHPINIConfigs         []PHPINIConfig            `json:"php_ini_configs,omitempty"`
 	MySQLConfigs          []MySQLConfig             `json:"mysql_configs,omitempty"`
 	SupervisorPrograms    []SupervisorProgram       `json:"supervisor_programs,omitempty"`
 	SupervisorHTTPServers []SupervisorHTTPServer    `json:"supervisor_http_servers,omitempty"`
