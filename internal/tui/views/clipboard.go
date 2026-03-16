@@ -10,9 +10,10 @@ import (
 )
 
 var runClipboardCommand = exec.Command
+var resolveClipboardCommand = clipboardCommand
 
 func copyTextToClipboard(text string) error {
-	command, args, err := clipboardCommand()
+	command, args, err := resolveClipboardCommand()
 	if err != nil {
 		return err
 	}

@@ -11,11 +11,16 @@ func TestCopyTextToClipboardRunsSelectedCommand(t *testing.T) {
 	t.Parallel()
 
 	originalRunClipboardCommand := runClipboardCommand
+	originalResolveClipboardCommand := resolveClipboardCommand
 	runClipboardCommand = func(name string, args ...string) *exec.Cmd {
 		return exec.Command("cat")
 	}
+	resolveClipboardCommand = func() (string, []string, error) {
+		return "cat", nil, nil
+	}
 	t.Cleanup(func() {
 		runClipboardCommand = originalRunClipboardCommand
+		resolveClipboardCommand = originalResolveClipboardCommand
 	})
 
 	if err := copyTextToClipboard("hello"); err != nil {
